@@ -6,11 +6,11 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-namespace autonom_hardware
+namespace autonom_localization
 {
 
-/// Republishes odometry with configured covariances. rf2o_laser_odometry publishes all-zero covariance,
-/// which robot_localization would otherwise treat as near-perfect certainty.
+/// Republishes odometry with configured covariances. rf2o_laser_odometry and the Gazebo DiffDrive bridge
+/// publish all-zero covariance, which robot_localization would otherwise treat as near-perfect certainty.
 class OdometryCovarianceRelay : public rclcpp::Node
 {
 public:
@@ -23,4 +23,4 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subscription_;
 };
 
-}  // namespace autonom_hardware
+}  // namespace autonom_localization

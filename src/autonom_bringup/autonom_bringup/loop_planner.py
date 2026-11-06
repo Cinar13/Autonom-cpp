@@ -3,6 +3,7 @@
 The explored region is split into equal angular sectors around its centroid; in each sector the
 reachable cell farthest from the centroid (while keeping `clearance` from obstacles and unknown
 space) becomes a waypoint. As slam_toolbox expands the map, successive laps grow outward.
+While the explored area is too small for a loop, `plan_exploration_goal` pushes the map frontier out.
 """
 
 from dataclasses import dataclass
@@ -61,18 +62,13 @@ def plan_loop(
     grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
 ) -> List[Waypoint]:
     """Return loop waypoints (x, y, yaw) in the map frame, starting nearest the robot; empty if none fit."""
-    if grid.ndim != 2 or info.resolution <= 0.0 or settings.waypoint_count < 3:
+    if settings.waypoint_count < 3:
+        return []
+    reachable = _reachable_points(grid, info, robot_xy, settings)
+    if reachable is None:
         return []
 
-    clearance_cells = max(1, math.ceil(settings.clearance / info.resolution))
-    safe = safe_free_space(grid, clearance_cells, settings.free_threshold)
-    seed = _nearest_cell(safe, info, robot_xy)
-    if seed is None:
-        return []
-
-    rows, cols = np.nonzero(reachable_from(safe, seed))
-    xs = info.origin_x + (cols + 0.5) * info.resolution
-    ys = info.origin_y + (rows + 0.5) * info.resolution
+    xs, ys = reachable
     centre_x, centre_y = float(xs.mean()), float(ys.mean())
     radii = np.hypot(xs - centre_x, ys - centre_y)
     angles = np.arctan2(ys - centre_y, xs - centre_x)
@@ -100,6 +96,40 @@ def plan_loop(
         (x, y, math.atan2(points[(i + 1) % len(points)][1] - y, points[(i + 1) % len(points)][0] - x))
         for i, (x, y) in enumerate(points)
     ]
+
+
+def plan_exploration_goal(
+    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
+) -> Optional[Waypoint]:
+    """Farthest reachable safe cell from the robot, facing away from it; None if nothing is `min_spacing` away.
+
+    Safe cells keep `clearance` from unknown space, so the farthest one sits just inside the map frontier.
+    """
+    reachable = _reachable_points(grid, info, robot_xy, settings)
+    if reachable is None:
+        return None
+    xs, ys = reachable
+    distances = np.hypot(xs - robot_xy[0], ys - robot_xy[1])
+    best = int(np.argmax(distances))
+    if distances[best] < settings.min_spacing:
+        return None
+    x, y = float(xs[best]), float(ys[best])
+    return x, y, math.atan2(y - robot_xy[1], x - robot_xy[0])
+
+
+def _reachable_points(
+    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
+) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Map-frame centres of safe cells connected to the robot, or None when there are none."""
+    if grid.ndim != 2 or info.resolution <= 0.0:
+        return None
+    clearance_cells = max(1, math.ceil(settings.clearance / info.resolution))
+    safe = safe_free_space(grid, clearance_cells, settings.free_threshold)
+    seed = _nearest_cell(safe, info, robot_xy)
+    if seed is None:
+        return None
+    rows, cols = np.nonzero(reachable_from(safe, seed))
+    return info.origin_x + (cols + 0.5) * info.resolution, info.origin_y + (rows + 0.5) * info.resolution
 
 
 def _nearest_cell(mask: np.ndarray, info: GridInfo, xy: Tuple[float, float]) -> Optional[Tuple[int, int]]:

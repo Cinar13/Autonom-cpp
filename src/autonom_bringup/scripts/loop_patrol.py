@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive continuous laps around the explored area once slam_toolbox publishes a usable map."""
+"""Drive continuous laps around the explored area; push the map frontier out until a loop fits."""
 
 import math
 import time
@@ -16,7 +16,7 @@ from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
 
-from autonom_bringup.loop_planner import GridInfo, LoopSettings, plan_loop
+from autonom_bringup.loop_planner import GridInfo, LoopSettings, plan_exploration_goal, plan_loop
 
 
 class LoopPatrol(Node):
@@ -59,41 +59,37 @@ class LoopPatrol(Node):
             return None
         return transform.transform.translation.x, transform.transform.translation.y
 
-    def plan_next_lap(self):
-        """Return loop waypoints, or an empty list after waiting `retry_period` when none are available yet."""
+    def plan_next_task(self):
+        """Return (kind, waypoints) with kind 'loop' or 'explore'; empty waypoints after waiting `retry_period`."""
         self.spin_for(0.1)
         robot_xy = self.robot_xy()
         if self._map is None or robot_xy is None:
             self.get_logger().info('Waiting for /map and robot pose...', throttle_duration_sec=10.0)
             self.spin_for(self.retry_period)
-            return []
+            return 'wait', []
 
         info = self._map.info
         grid = np.asarray(self._map.data, dtype=np.int16).reshape(info.height, info.width)
+        grid_info = GridInfo(info.resolution, info.origin.position.x, info.origin.position.y)
         known_area = np.count_nonzero(grid >= 0) * info.resolution ** 2
-        if known_area < self.min_known_area:
-            self.get_logger().info(
-                f'Map too small for a loop ({known_area:.1f} of {self.min_known_area:.1f} m^2)',
-                throttle_duration_sec=10.0)
-            self.spin_for(self.retry_period)
-            return []
 
-        waypoints = plan_loop(
-            grid,
-            GridInfo(info.resolution, info.origin.position.x, info.origin.position.y),
-            robot_xy,
-            self.settings,
-        )
-        if not waypoints:
-            self.get_logger().warn('No loop fits the explored free space yet', throttle_duration_sec=10.0)
-            self.spin_for(self.retry_period)
-        return waypoints
+        if known_area >= self.min_known_area:
+            waypoints = plan_loop(grid, grid_info, robot_xy, self.settings)
+            if waypoints:
+                return 'loop', waypoints
 
+        goal = plan_exploration_goal(grid, grid_info, robot_xy, self.settings)
+        if goal is not None:
+            return 'explore', [goal]
 
-def to_pose(navigator: BasicNavigator, frame: str, x: float, y: float, yaw: float) -> PoseStamped:
+        self.get_logger().warn('No reachable loop or frontier in the explored space yet', throttle_duration_sec=10.0)
+        self.spin_for(self.retry_period)
+        return 'wait', []
+
+def to_pose(frame: str, x: float, y: float, yaw: float) -> PoseStamped:
+    """Goal pose with a zero stamp ("latest TF"), valid under both wall and simulated time."""
     pose = PoseStamped()
     pose.header.frame_id = frame
-    pose.header.stamp = navigator.get_clock().now().to_msg()
     pose.pose.position.x = x
     pose.pose.position.y = y
     pose.pose.orientation.z = math.sin(0.5 * yaw)
@@ -106,23 +102,30 @@ def main():
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     patrol = LoopPatrol()
     navigator = BasicNavigator('loop_patrol_navigator')
+    navigator.set_parameters([patrol.get_parameter('use_sim_time')])
     try:
         navigator.waitUntilNav2Active(localizer='slam_toolbox')
         lap = 0
         while rclpy.ok():
-            waypoints = patrol.plan_next_lap()
+            kind, waypoints = patrol.plan_next_task()
             if not waypoints:
                 continue
-            lap += 1
-            patrol.get_logger().info(f'Lap {lap}: {len(waypoints)} waypoints')
-            navigator.followWaypoints([to_pose(navigator, patrol.global_frame, *w) for w in waypoints])
+            if kind == 'loop':
+                lap += 1
+                label = f'Lap {lap}'
+            else:
+                x, y, _ = waypoints[0]
+                label = f'Exploration step to ({x:.2f}, {y:.2f})'
+            patrol.get_logger().info(f'{label}: {len(waypoints)} waypoint(s)')
+            navigator.followWaypoints([to_pose(patrol.global_frame, *w) for w in waypoints])
             while not navigator.isTaskComplete():
                 rclpy.spin_once(patrol, timeout_sec=0.05)
 
             result = navigator.getResult()
             if result != TaskResult.SUCCEEDED:
-                patrol.get_logger().warn(f'Lap {lap} ended with {result.name}')
-            patrol.spin_for(patrol.lap_pause)
+                patrol.get_logger().warn(f'{label} ended with {result.name}')
+            if kind == 'loop':
+                patrol.spin_for(patrol.lap_pause)
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:

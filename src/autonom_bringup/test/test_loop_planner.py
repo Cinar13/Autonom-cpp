@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from autonom_bringup.loop_planner import GridInfo, LoopSettings, plan_loop, safe_free_space
+from autonom_bringup.loop_planner import GridInfo, LoopSettings, plan_exploration_goal, plan_loop, safe_free_space
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
 
@@ -48,3 +48,20 @@ def test_unknown_space_is_not_safe():
 def test_degenerate_inputs_return_empty():
     assert plan_loop(_room(), GridInfo(0.0, 0.0, 0.0), (0.0, 0.0), LoopSettings()) == []
     assert plan_loop(_room(), INFO, (0.0, 0.0), LoopSettings(waypoint_count=2)) == []
+
+
+def test_exploration_goal_heads_to_far_end_of_corridor():
+    grid = np.full((200, 200), -1, dtype=np.int16)
+    grid[95:105, 40:120] = 0
+    goal = plan_exploration_goal(grid, INFO, (-2.5, 0.0), LoopSettings(clearance=0.1))
+    assert goal is not None
+    x, y, yaw = goal
+    assert x > 0.5
+    assert abs(y) < 0.3
+    assert abs(yaw) < 0.2
+
+
+def test_exploration_goal_none_when_nothing_is_far_enough():
+    grid = np.full((200, 200), -1, dtype=np.int16)
+    grid[98:103, 98:103] = 0
+    assert plan_exploration_goal(grid, INFO, (0.0, 0.0), LoopSettings(clearance=0.05, min_spacing=1.0)) is None

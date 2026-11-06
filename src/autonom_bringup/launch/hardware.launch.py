@@ -1,4 +1,4 @@
-"""Robot description, motor/encoder drivers, RPLiDAR S3, rf2o laser odometry and the optional IMU."""
+"""Real-robot hardware: robot description, motor/encoder drivers, RPLiDAR S3 and the optional IMU."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -61,13 +61,6 @@ def generate_launch_description():
                 parameters=[hardware_params],
                 extra_arguments=[{'use_intra_process_comms': True}],
             ),
-            ComposableNode(
-                package='autonom_hardware',
-                plugin='autonom_hardware::OdometryCovarianceRelay',
-                name='rf2o_covariance_relay',
-                parameters=[hardware_params],
-                remappings=[('odom_in', '/rf2o/odom_raw'), ('odom_out', '/rf2o/odom')],
-            ),
         ],
     )
 
@@ -87,22 +80,6 @@ def generate_launch_description():
         output='screen',
     )
 
-    laser_odometry = Node(
-        package='rf2o_laser_odometry',
-        executable='rf2o_laser_odometry_node',
-        name='rf2o_laser_odometry',
-        parameters=[{
-            'laser_scan_topic': '/scan',
-            'odom_topic': '/rf2o/odom_raw',
-            'publish_tf': False,
-            'base_frame_id': 'base_footprint',
-            'odom_frame_id': 'odom',
-            'init_pose_from_topic': '',
-            'freq': 20.0,
-        }],
-        output='screen',
-    )
-
     imu = Node(
         package=LaunchConfiguration('imu_package'),
         executable=LaunchConfiguration('imu_executable'),
@@ -112,4 +89,4 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, lidar, laser_odometry, imu])
+    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, lidar, imu])

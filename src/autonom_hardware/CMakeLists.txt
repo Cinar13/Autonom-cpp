@@ -36,7 +36,6 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC PkgConfig::GPIOD pthread)
 add_library(${PROJECT_NAME}_nodes SHARED
   src/motor_driver_node.cpp
   src/wheel_odometry_node.cpp
-  src/odometry_covariance_relay.cpp
 )
 target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${PROJECT_NAME}_core
@@ -55,10 +54,6 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::WheelOdometryNode"
   EXECUTABLE wheel_odometry_node
-)
-rclcpp_components_register_node(${PROJECT_NAME}_nodes
-  PLUGIN "autonom_hardware::OdometryCovarianceRelay"
-  EXECUTABLE odometry_covariance_relay
 )
 
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
