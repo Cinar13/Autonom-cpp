@@ -1,0 +1,13 @@
+loop_patrol:
+  ros__parameters:
+    map_topic: /map
+    global_frame: map
+    robot_base_frame: base_footprint
+    waypoint_count: 8
+    clearance: 0.35
+    max_radius: 0.0
+    min_spacing: 0.5
+    free_threshold: 25
+    min_known_area: 4.0
+    lap_pause: 2.0
+    retry_period: 3.0

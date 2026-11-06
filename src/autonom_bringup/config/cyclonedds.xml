@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Unicast-only discovery between the Raspberry Pi 5 and the WSL2 RViz station. WSL2's Hyper-V
+  switch drops multicast, so SPDP discovery goes to explicit peers instead.
+
+  The same file is used on both machines; set the peer addresses in each ~/.bashrc:
+    export AUTONOM_RPI_IP=192.168.1.50      # Raspberry Pi 5 LAN address
+    export AUTONOM_WSL_IP=192.168.1.60      # Windows host LAN address (WSL2 mirrored networking)
+    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    export CYCLONEDDS_URI=file://$HOME/Autonom-cpp/install/autonom_bringup/share/autonom_bringup/config/cyclonedds.xml
+-->
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface autodetermine="true" priority="default" multicast="false"/>
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+      <MaxMessageSize>65500B</MaxMessageSize>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <!-- Each ROS 2 process is a participant; Nav2 + SLAM + drivers + RViz exceed the default of 9. -->
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <Peers>
+        <Peer address="${AUTONOM_RPI_IP}"/>
+        <Peer address="${AUTONOM_WSL_IP}"/>
+        <Peer address="localhost"/>
+      </Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
