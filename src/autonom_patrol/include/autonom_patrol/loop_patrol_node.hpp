@@ -13,7 +13,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <std_msgs/msg/string.hpp>
-#include <std_srvs/srv/set_bool.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -52,13 +51,9 @@ private:
   void sendExploration(const Waypoint & goal);
   void cancelGoal();
   void setSpeed(double speed);
-  void setAcceleration(const std::vector<double> & max_accel);
-  void startFastModeTimer();
-  void updateDrivingProfile();
   void watchStartLine(const Waypoint & pose);
   void updateRearGate(const Waypoint & pose);
   void publishRearGate();
-  void requestLocalizationMode();
   [[nodiscard]] geometry_msgs::msg::PoseStamped toPose(const Waypoint & w) const;
 
   // Parameters
@@ -70,16 +65,12 @@ private:
   int preempt_poses_remaining_{1};
   double exploration_speed_{0.0};
   double race_speed_{0.0};
-  std::vector<double> exploration_max_accel_;  // velocity_smoother max_accel [x, y, theta]; empty = untouched
-  std::vector<double> race_max_accel_;
-  double race_speed_delay_{0.0};
   bool rear_gate_enabled_{true};
   double rear_gate_step_{0.3};
   double behind_drop_radius_{2.0};
   bool wait_for_race_start_{true};
   std::string direction_{"auto"};
   double start_line_half_width_{1.0};
-  int localize_after_laps_{0};
   LoopSettings settings_;
 
   // State
@@ -108,11 +99,6 @@ private:
   std::optional<Point> gate_anchor_;
   std::optional<double> gate_direction_;
   std::optional<double> speed_;
-  std::vector<double> accel_;  // last max_accel the smoother accepted
-  std::optional<rclcpp::Time> fast_at_;  // node clock (sim time in Gazebo): race speed from here on
-  bool fast_{false};
-  int crossings_with_lap_{0};  // forward start-line crossings since the first lap was found
-  bool localization_requested_{false};
 
   Kind kind_{Kind::kExplore};
   std::string label_;
@@ -132,8 +118,6 @@ private:
   rclcpp_action::Client<NavigateThroughPoses>::SharedPtr loop_client_;
   rclcpp_action::Client<NavigateToPose>::SharedPtr explore_client_;
   std::shared_ptr<rclcpp::AsyncParametersClient> controller_params_;
-  std::shared_ptr<rclcpp::AsyncParametersClient> smoother_params_;
-  rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr localization_client_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

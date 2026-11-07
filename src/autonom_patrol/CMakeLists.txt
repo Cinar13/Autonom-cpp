@@ -15,7 +15,6 @@ find_package(lifecycle_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 
@@ -36,7 +35,6 @@ target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${nav2_msgs_TARGETS}
   ${nav_msgs_TARGETS}
   ${std_msgs_TARGETS}
-  ${std_srvs_TARGETS}
   tf2::tf2
   tf2_ros::tf2_ros
 )

@@ -86,13 +86,9 @@ def _pipeline(context):
         }.items(),
     )
 
-    # Phase 1 maps asynchronously; with localize_after_mapping the map_and_localization node (same mapping code
-    # path as the async node) is switched to pure scan-matching localization by the loop patrol once the lap is
-    # driven (loop_patrol.localize_after_laps), so the map stops changing.
-    localize_after_mapping = IfCondition(LaunchConfiguration('localize_after_mapping')).evaluate(context)
     slam = LifecycleNode(
         package='slam_toolbox',
-        executable='map_and_localization_slam_toolbox_node' if localize_after_mapping else 'async_slam_toolbox_node',
+        executable='async_slam_toolbox_node',
         name='slam_toolbox',
         namespace='',
         parameters=slam_params + [{'use_lifecycle_manager': False}, sim_time],
@@ -137,7 +133,7 @@ def _pipeline(context):
         package='autonom_patrol',
         executable='loop_patrol',
         name='loop_patrol',
-        parameters=patrol_params + [sim_time] + ([] if localize_after_mapping else [{'localize_after_laps': 0}]),
+        parameters=patrol_params + [sim_time],
         condition=IfCondition(LaunchConfiguration('autonomous_loop')),
         output='screen',
     )
@@ -151,9 +147,6 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'use_rf2o', default_value='true', description='Run rf2o laser odometry and fuse it in the EKF'),
         DeclareLaunchArgument('use_imu', default_value='false', description='Fuse /imu/data in the EKF'),
-        DeclareLaunchArgument(
-            'localize_after_mapping', default_value='true',
-            description='Freeze the map once the lap is driven and localize by scan matching (false: map all race)'),
         DeclareLaunchArgument(
             'autonomous_loop', default_value='true', description='Run the loop patrol once Nav2 and the map are up'),
         DeclareLaunchArgument(
