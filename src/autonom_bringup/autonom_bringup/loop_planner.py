@@ -124,8 +124,8 @@ def plan_exploration_goal(
     """Farthest reachable safe cell from the robot, facing away from it; None if nothing is `min_spacing` away.
 
     Safe cells keep `clearance` from unknown space, so the farthest one sits just inside the map frontier.
-    With `heading` (robot yaw), cells in front of the robot are preferred so it keeps driving forward along
-    the track instead of turning back in a corridor; cells behind are used only when nothing ahead qualifies.
+    With `heading` (robot yaw), only cells in front of the robot qualify, so it keeps driving forward along
+    the track and never turns back in a corridor.
     """
     reachable = _reachable_points(grid, info, robot_xy, settings)
     if reachable is None:
@@ -135,9 +135,10 @@ def plan_exploration_goal(
     if settings.max_exploration_distance > 0.0:
         distances = np.where(distances <= settings.max_exploration_distance, distances, -1.0)
     if heading is not None:
+        # Never fall back to a goal behind the robot: that drives the track backwards (no reverse crossing of
+        # the start). With nothing safe ahead yet, return None and let the caller wait for the map to grow.
         ahead = (xs - robot_xy[0]) * math.cos(heading) + (ys - robot_xy[1]) * math.sin(heading) > 0.0
-        if np.any(ahead & (distances >= settings.min_spacing)):
-            distances = np.where(ahead, distances, -1.0)
+        distances = np.where(ahead, distances, -1.0)
     best = int(np.argmax(distances))
     if distances[best] < settings.min_spacing:
         return None
@@ -272,3 +273,46 @@ def start_ahead(waypoints: List[Waypoint], xy: Tuple[float, float], heading: flo
     if (first[0] - xy[0]) * cos_h + (first[1] - xy[1]) * sin_h >= 0.0:
         return waypoints
     return waypoints[1:] + waypoints[:1]
+
+
+def rear_gate_cells(
+    grid: np.ndarray, info: GridInfo, xy: Tuple[float, float], direction: float,
+    offset: float = 0.4, max_half_width: float = 1.5, occupied_threshold: int = 50,
+) -> List[Tuple[int, int]]:
+    """Cells of a wall across the track `offset` metres behind the robot (opposite to `direction`).
+
+    The line runs perpendicular to `direction` from the gate centre in both directions until it reaches an
+    occupied cell (the track walls) or `max_half_width`; each sample also marks its four neighbours, so the
+    wall stays sealed against 4- and 8-connected planners. Fed to the global costmap as a keepout zone, it cuts the ring behind the robot: every
+    plan must go forward, so the robot never turns back along the track.
+    """
+    if grid.ndim != 2 or info.resolution <= 0.0:
+        return []
+    cos_d, sin_d = math.cos(direction), math.sin(direction)
+    centre = (xy[0] - offset * cos_d, xy[1] - offset * sin_d)
+    step = 0.5 * info.resolution
+    cells = set()
+    for side in (1.0, -1.0):
+        distance = 0.0
+        while distance <= max_half_width:
+            px = centre[0] - side * distance * sin_d
+            py = centre[1] + side * distance * cos_d
+            row, col = _cell_of(info, (px, py))
+            if not (0 <= row < grid.shape[0] and 0 <= col < grid.shape[1]):
+                break
+            for d_row, d_col in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+                t_row, t_col = row + d_row, col + d_col
+                if 0 <= t_row < grid.shape[0] and 0 <= t_col < grid.shape[1]:
+                    cells.add((t_row, t_col))
+            if grid[row, col] >= occupied_threshold:
+                break
+            distance += step
+    return sorted(cells)
+
+
+def drop_behind(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float, radius: float) -> List[Waypoint]:
+    """Remove waypoints within `radius` behind the robot: they sit between it and the rear gate and could only be
+    reached by turning back."""
+    cos_h, sin_h = math.cos(heading), math.sin(heading)
+    return [w for w in waypoints
+            if not ((w[0] - xy[0]) * cos_h + (w[1] - xy[1]) * sin_h < 0.0 and math.dist(w[:2], xy) < radius)]
