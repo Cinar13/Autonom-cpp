@@ -3,19 +3,23 @@ loop_patrol:
     map_topic: /map
     global_frame: map
     robot_base_frame: base_footprint
-    waypoint_count: 8
     clearance: 0.35
-    max_radius: 0.0
     min_spacing: 0.5
+    # Lap waypoints every waypoint_spacing metres of driving distance along the track centre line; a closed
+    # ring shorter than min_loop_length is not a lap. The lap is cut at the rear gate (rear_gate_offset),
+    # across at most cut_half_width.
+    waypoint_spacing: 1.0
+    min_loop_length: 2.0
+    cut_half_width: 1.5
     free_threshold: 25
     min_known_area: 4.0
     lap_pause: 0.0
     # Send the next lap when this many lap poses remain (continuous driving, no stop at the lap end).
     preempt_poses_remaining: 1
     retry_period: 3.0
-    # Lap direction (AC-5.1). auto: the direction the robot faces at the start; it never crosses the start
-    # line backwards (team rule, docs/06 section 4). clockwise | counterclockwise force a direction and
-    # are refused when they run against the start heading.
+    # Lap direction (AC-5.1). Laps always follow the direction the robot faces at the start (it never turns
+    # back, docs/06 section 4). clockwise | counterclockwise only add a check: a lap in the other orientation is
+    # refused (robot placed the wrong way round).
     direction: auto
     start_line_half_width: 1.0
     # Exploration goals stay within this distance so Nav2 never takes the shorter way back round the track.

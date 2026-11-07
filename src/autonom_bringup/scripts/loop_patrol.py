@@ -3,7 +3,6 @@
 
 import math
 import time
-from dataclasses import replace
 
 import numpy as np
 import rclpy
@@ -21,7 +20,7 @@ from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from autonom_bringup.loop_planner import (
-    GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_follows_heading, plan_exploration_goal,
+    GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_is_clockwise, plan_exploration_goal,
     plan_loop, rear_gate_cells, start_ahead)
 
 
@@ -38,7 +37,6 @@ class LoopPatrol(Node):
         # Rear gate: a keepout wall across the track behind the robot, so Nav2 can never plan a path that
         # turns back (no reverse travel, docs/06 section 4). Needs the global costmap KeepoutFilter.
         self.rear_gate_enabled = self.declare_parameter('rear_gate_enabled', True).value
-        self.rear_gate_offset = self.declare_parameter('rear_gate_offset', 0.4).value
         self.rear_gate_step = self.declare_parameter('rear_gate_update_distance', 0.3).value
         self.behind_drop_radius = self.declare_parameter('behind_drop_radius', 2.0).value
         self._gate_anchor = None
@@ -59,14 +57,16 @@ class LoopPatrol(Node):
         self._last_loop = []
         self.reverse_crossings = 0
         self.settings = LoopSettings(
-            waypoint_count=self.declare_parameter('waypoint_count', 8).value,
             clearance=self.declare_parameter('clearance', 0.35).value,
-            max_radius=self.declare_parameter('max_radius', 0.0).value,
             min_spacing=self.declare_parameter('min_spacing', 0.5).value,
             free_threshold=self.declare_parameter('free_threshold', 25).value,
-            clockwise=self.direction == 'clockwise',
+            waypoint_spacing=self.declare_parameter('waypoint_spacing', 1.0).value,
+            min_loop_length=self.declare_parameter('min_loop_length', 2.0).value,
+            cut_offset=self.declare_parameter('rear_gate_offset', 0.4).value,
+            cut_half_width=self.declare_parameter('cut_half_width', 1.5).value,
             max_exploration_distance=self.declare_parameter('max_exploration_distance', 2.5).value,
         )
+        self.rear_gate_offset = self.settings.cut_offset
         map_topic = self.declare_parameter('map_topic', '/map').value
         race_state_topic = self.declare_parameter('race_state_topic', '/race/state').value
 
@@ -138,7 +138,8 @@ class LoopPatrol(Node):
             if waypoints:
                 return 'loop', waypoints
 
-        goal = plan_exploration_goal(grid, grid_info, robot_xy, self.settings, heading)
+        travel = self._gate_direction if self._gate_direction is not None else heading
+        goal = plan_exploration_goal(grid, grid_info, robot_xy, self.settings, travel)
         if goal is not None:
             return 'explore', [goal]
 
@@ -173,8 +174,9 @@ class LoopPatrol(Node):
                 self.destroy_client(client)
 
     def _plan_race_loop(self, grid, grid_info, robot_xy, heading):
-        """Loop oriented with the race direction, starting at the first waypoint ahead of the robot."""
-        waypoints = plan_loop(grid, grid_info, robot_xy, self.settings)
+        """Lap along the track in the direction of travel, starting at the first waypoint ahead of the robot."""
+        direction = self._gate_direction if self._gate_direction is not None else heading
+        waypoints = plan_loop(grid, grid_info, robot_xy, direction, self.settings)
         if not waypoints:
             if self._last_loop:
                 # An obstacle on the track (another robot) breaks the closed ring in the map for a while;
@@ -183,22 +185,23 @@ class LoopPatrol(Node):
                                        throttle_duration_sec=10.0)
                 return self._ahead_only(self._last_loop, robot_xy, heading)
             return []
-        line = self.start_line
-        if not loop_follows_heading(waypoints, (line.x, line.y), line.heading):
-            if self.direction == 'auto':
-                waypoints = plan_loop(grid, grid_info, robot_xy, replace(self.settings, clockwise=True))
-            else:
-                self.get_logger().error(
-                    f"direction '{self.direction}' runs against the start heading: "
-                    'the robot would cross the start line backwards. Not driving this loop.',
-                    throttle_duration_sec=10.0)
-                return []
+        if self.direction != 'auto' and loop_is_clockwise(waypoints) != (self.direction == 'clockwise'):
+            # Laps follow the travel direction set at the start; a forced direction that disagrees would need a
+            # U-turn, which is never allowed.
+            self.get_logger().error(
+                f"direction '{self.direction}' runs against the robot's start heading: place the robot facing "
+                'the race direction. Not driving this loop.', throttle_duration_sec=10.0)
+            return []
         self._last_loop = waypoints
         return self._ahead_only(waypoints, robot_xy, heading)
 
     def _ahead_only(self, waypoints, robot_xy, heading):
         direction = self._gate_direction if self._gate_direction is not None else heading
-        return start_ahead(drop_behind(waypoints, robot_xy, direction, self.behind_drop_radius), robot_xy, direction)
+        # Treat the lap as a cycle that starts at the waypoint nearest the robot (needed when a stored lap is
+        # reused from another position), then skip anything just behind the robot.
+        nearest = min(range(len(waypoints)), key=lambda k: math.dist(waypoints[k][:2], robot_xy))
+        cycle = waypoints[nearest:] + waypoints[:nearest]
+        return start_ahead(drop_behind(cycle, robot_xy, direction, self.behind_drop_radius), robot_xy, direction)
 
     def update_rear_gate(self, pose):
         """Advance the gate with the robot's forward travel; never flip it when the robot moves backwards."""
@@ -221,7 +224,8 @@ class LoopPatrol(Node):
         mask = np.zeros_like(grid, dtype=np.int8)
         cells = rear_gate_cells(
             grid, GridInfo(info.resolution, info.origin.position.x, info.origin.position.y),
-            self._gate_anchor, self._gate_direction, offset=self.rear_gate_offset)
+            self._gate_anchor, self._gate_direction, offset=self.rear_gate_offset,
+            max_half_width=self.settings.cut_half_width)
         for row, col in cells:
             mask[row, col] = 100
         msg = OccupancyGrid()

@@ -3,11 +3,11 @@ import math
 import numpy as np
 
 from autonom_bringup.loop_planner import (
-    GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, rear_gate_cells, drop_behind, start_ahead, plan_exploration_goal, plan_loop, safe_free_space)
+    GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_is_clockwise, plan_exploration_goal,
+    plan_loop, rear_gate_cells, safe_free_space, start_ahead)
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
-# Convex room tests exercise waypoint geometry only; a room is not a closed track.
-ROOM = LoopSettings(require_closed_track=False)
+RING = LoopSettings(clearance=0.3, waypoint_spacing=1.0)
 
 
 def _room(size_cells=200, wall=2):
@@ -16,41 +16,85 @@ def _room(size_cells=200, wall=2):
     return grid
 
 
-def test_clearance_keeps_waypoints_away_from_walls():
-    settings = LoopSettings(clearance=0.4, require_closed_track=False)
-    waypoints = plan_loop(_room(), INFO, (0.0, 0.0), settings)
-    assert len(waypoints) >= 3
-    for x, y, _ in waypoints:
-        assert -5.0 + 0.4 <= x <= 5.0 - 0.4
-        assert -5.0 + 0.4 <= y <= 5.0 - 0.4
-
-
-def test_loop_starts_nearest_robot_and_heads_to_next_waypoint():
-    waypoints = plan_loop(_room(), INFO, (4.0, 4.0), ROOM)
-    distances = [math.dist((x, y), (4.0, 4.0)) for x, y, _ in waypoints]
-    assert distances[0] == min(distances)
-    x0, y0, yaw0 = waypoints[0]
-    x1, y1, _ = waypoints[1]
-    assert math.isclose(yaw0, math.atan2(y1 - y0, x1 - x0))
-
-
-def test_unreachable_region_is_ignored():
+def _ring():
+    """Square track: 10 m outer wall, 6 m inner block, 2 m wide corridor (centre line 4 m from the middle)."""
     grid = _room()
-    grid[:, 100:104] = 100
-    waypoints = plan_loop(grid, INFO, (-2.5, 0.0), ROOM)
-    assert waypoints
-    assert all(x < 0.0 for x, _, _ in waypoints)
+    grid[40:160, 40:160] = 100
+    return grid
+
+
+ARENA_INFO = GridInfo(resolution=0.025, origin_x=-1.5, origin_y=-1.25)
+
+
+def _fibonacci_arena():
+    """The race map (Fibonacci-Autonomous-Map): 2.49 x 2.10 m box, U island open to the top, divider from the
+    top wall into the U's opening. Walls 2 cells (5 cm) thick."""
+    grid = np.full((100, 120), 100, dtype=np.int16)
+    def cell(x, y):
+        return int((y - ARENA_INFO.origin_y) / 0.025), int((x - ARENA_INFO.origin_x) / 0.025)
+    r0, c0 = cell(-1.245, -1.05)
+    r1, c1 = cell(1.245, 1.05)
+    grid[r0 + 2:r1 - 1, c0 + 2:c1 - 1] = 0
+    def wall(x0, y0, x1, y1):
+        ra, ca = cell(min(x0, x1), min(y0, y1))
+        rb, cb = cell(max(x0, x1), max(y0, y1))
+        grid[ra - 1:rb + 1, ca - 1:cb + 1] = 100
+    wall(-0.62, -0.42, 0.62, -0.42)   # U bottom
+    wall(-0.62, -0.42, -0.62, 0.42)   # U left arm
+    wall(0.62, -0.42, 0.62, 0.42)     # U right arm
+    wall(0.0, 0.21, 0.0, 1.05)        # divider from the top wall
+    return grid
+
+
+def test_clearance_keeps_unsafe_cells_out():
+    safe = safe_free_space(_room(), 8, 25)
+    assert not safe[:9, :].any() and not safe[:, :9].any()
+    assert safe[100, 100]
 
 
 def test_unknown_space_is_not_safe():
     grid = np.full((50, 50), -1, dtype=np.int16)
     assert not safe_free_space(grid, 1, 25).any()
-    assert plan_loop(grid, INFO, (0.0, 0.0), LoopSettings()) == []
+    assert plan_loop(grid, INFO, (0.0, 0.0), 0.0, RING) == []
 
 
 def test_degenerate_inputs_return_empty():
-    assert plan_loop(_room(), GridInfo(0.0, 0.0, 0.0), (0.0, 0.0), LoopSettings()) == []
-    assert plan_loop(_room(), INFO, (0.0, 0.0), LoopSettings(waypoint_count=2)) == []
+    assert plan_loop(_ring(), GridInfo(0.0, 0.0, 0.0), (0.0, -4.0), 0.0, RING) == []
+
+
+def test_ring_lap_runs_ahead_along_the_centre_line():
+    waypoints = plan_loop(_ring(), INFO, (0.0, -4.0), 0.0, RING)
+    assert len(waypoints) >= 15                       # ~32 m lap, 1 m spacing (4-connected steps)
+    assert waypoints[0][0] > 0.0                      # first waypoint ahead (east)
+    for x, y, _ in waypoints:
+        assert 3.5 <= max(abs(x), abs(y)) <= 4.5     # corridor 3..5 m from the middle, centre line at 4 m
+    assert not loop_is_clockwise(waypoints)          # east along the bottom = counter-clockwise
+
+
+def test_lap_direction_follows_heading():
+    assert loop_is_clockwise(plan_loop(_ring(), INFO, (0.0, -4.0), math.pi, RING))
+
+
+def test_partial_track_is_not_a_lap():
+    u_shape = _ring()
+    u_shape[160:198, 90:110] = -1                     # top corridor not mapped yet
+    assert plan_loop(u_shape, INFO, (0.0, -4.0), 0.0, RING) == []
+
+
+def test_fibonacci_arena_lap_winds_through_the_u():
+    settings = LoopSettings(clearance=0.15, waypoint_spacing=0.4, min_loop_length=2.0, cut_offset=0.2,
+                            cut_half_width=0.6)
+    grid = _fibonacci_arena()
+    waypoints = plan_loop(grid, ARENA_INFO, (0.0, -0.74), 0.0, settings)   # bottom corridor, heading east
+    assert len(waypoints) >= 10
+    # The lap passes inside the U, under the divider tip.
+    assert any(abs(x) < 0.5 and -0.4 < y < 0.2 for x, y, _ in waypoints)
+    # and uses the outer side corridors.
+    assert any(x > 0.7 for x, _, _ in waypoints) and any(x < -0.7 for x, _, _ in waypoints)
+    for x, y, _ in waypoints:
+        r = int((y - ARENA_INFO.origin_y) / 0.025)
+        c = int((x - ARENA_INFO.origin_x) / 0.025)
+        assert grid[r, c] == 0
 
 
 def test_exploration_goal_heads_to_far_end_of_corridor():
@@ -70,28 +114,11 @@ def test_exploration_goal_none_when_nothing_is_far_enough():
     assert plan_exploration_goal(grid, INFO, (0.0, 0.0), LoopSettings(clearance=0.05, min_spacing=1.0)) is None
 
 
-def _signed_area(waypoints):
-    points = [(x, y) for x, y, _ in waypoints]
-    return 0.5 * sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]))
-
-
-def test_loop_direction_follows_setting():
-    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=False, require_closed_track=False))
-    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True, require_closed_track=False))
-    assert _signed_area(ccw) > 0.0
-    assert _signed_area(cw) < 0.0
-    assert cw[0][:2] == ccw[0][:2]
-
-
 def _l_corridor():
     grid = np.full((200, 200), -1, dtype=np.int16)
     grid[90:110, 40:160] = 0
     grid[90:180, 140:160] = 0
     return grid
-
-
-def test_partial_map_is_not_a_loop():
-    assert plan_loop(_l_corridor(), INFO, (-2.5, 0.0), LoopSettings(clearance=0.2)) == []
 
 
 def test_exploration_goal_prefers_cells_ahead_of_robot():
@@ -127,15 +154,6 @@ def test_far_side_of_track_is_ignored():
     assert _run(monitor, [(0.5, 0.0), (2.0, 0.0), (0.5, 3.0), (-0.5, 3.0)]) == []
 
 
-def test_loop_orientation_matches_start_heading():
-    ccw = plan_loop(_room(), INFO, (4.0, 4.0), ROOM)
-    x0, y0, _ = ccw[0]
-    assert loop_follows_heading(ccw, (x0, y0), ccw[0][2])
-    assert not loop_follows_heading(ccw, (x0, y0), ccw[0][2] + math.pi)
-    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True, require_closed_track=False))
-    assert loop_follows_heading(cw, (x0, y0), ccw[0][2] + math.pi)
-
-
 def test_exploration_distance_cap():
     grid = np.full((200, 200), -1, dtype=np.int16)
     grid[95:105, 40:160] = 0
@@ -155,33 +173,6 @@ def _ring():
     grid = _room()
     grid[40:160, 40:160] = 100
     return grid
-
-
-def test_centre_line_waypoints_sit_mid_corridor():
-    waypoints = plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2))
-    assert len(waypoints) == 8
-    # Corridor spans 3..5 m from the centre (chebyshev distance), 3.2..4.8 m with clearance. Side sectors sit
-    # near the 4 m centre line; corner sectors lean to the inside of the corner.
-    offsets = [max(abs(x), abs(y)) for x, y, _ in waypoints]
-    assert all(3.2 <= d <= 4.8 for d in offsets)
-    assert sum(offsets) / len(offsets) < 4.1
-
-
-def test_outer_wall_waypoints_when_centre_line_disabled():
-    waypoints = plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2, centre_line=False))
-    assert all(max(abs(x), abs(y)) > 4.6 for x, y, _ in waypoints)
-
-
-
-def test_closed_ring_is_a_loop_but_partial_track_is_not():
-    assert plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2))
-    u_shape = _ring()
-    u_shape[160:198, 90:110] = -1
-    assert plan_loop(u_shape, INFO, (0.0, -4.0), LoopSettings(clearance=0.2)) == []
-
-
-def test_convex_room_is_not_a_closed_track():
-    assert plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings()) == []
 
 
 def test_exploration_never_falls_back_to_cells_behind():
@@ -238,3 +229,42 @@ def test_rear_gate_forces_the_long_way_round():
 def test_drop_behind_keeps_far_and_forward_waypoints():
     loop = [(1.0, 0.0, 0.0), (-0.5, 0.2, 0.0), (-3.0, 0.0, 0.0)]
     assert drop_behind(loop, (0.0, 0.0), 0.0, 2.0) == [(1.0, 0.0, 0.0), (-3.0, 0.0, 0.0)]
+
+
+def test_exploration_goal_inside_the_u_never_jumps_through_the_arm():
+    # Regression: inside the U heading south, the straight-line farthest "ahead" cell was in the right outer
+    # corridor, only reachable by turning back out of the U. Driving distance keeps the goal inside the U.
+    settings = LoopSettings(clearance=0.12, min_spacing=0.3, cut_offset=0.2, cut_half_width=0.6,
+                            max_exploration_distance=1.0)
+    goal = plan_exploration_goal(_fibonacci_arena(), ARENA_INFO, (0.3, 0.3), settings, -math.pi / 2)
+    assert goal is not None
+    x, y, _ = goal
+    assert abs(x) < 0.6 and y < 0.42      # still inside the U
+
+
+
+def test_unsealed_cut_is_not_a_lap():
+    # Cut half-width too short to reach both walls of the 2 m corridor: a detour round the cut end must not
+    # be mistaken for the lap.
+    settings = LoopSettings(clearance=0.3, waypoint_spacing=1.0, cut_half_width=0.5)
+    assert plan_loop(_ring(), INFO, (0.0, -4.0), 0.0, settings) == []
+
+
+
+def test_exploration_follows_centre_line_round_the_arm_hairpin():
+    # Regression: leaving the U's left half heading north, the farthest cell was the top-left corner pocket;
+    # the robot drove into it facing the wall and could then only continue by turning back. The centre-line
+    # goal stays in the open middle of the turn, well clear of the walls.
+    settings = LoopSettings(clearance=0.12, min_spacing=0.3, cut_offset=0.2, cut_half_width=0.6,
+                            max_exploration_distance=0.6)
+    goal = plan_exploration_goal(_fibonacci_arena(), ARENA_INFO, (-0.31, 0.35), settings, math.pi / 2)
+    assert goal is not None
+    x, y, _ = goal
+    grid = _fibonacci_arena()
+    free = grid == 0
+    from scipy.ndimage import distance_transform_edt
+    wall_distance = distance_transform_edt(free) * ARENA_INFO.resolution
+    r = int((y - ARENA_INFO.origin_y) / ARENA_INFO.resolution)
+    c = int((x - ARENA_INFO.origin_x) / ARENA_INFO.resolution)
+    assert wall_distance[r, c] >= 0.2       # centre of the passage, not a corner pocket
+    assert y < 1.0                          # not pressed against the top wall
