@@ -62,7 +62,9 @@ class LoopPatrol(Node):
         self._race_state = 'UNKNOWN'
         self.create_subscription(String, race_state_topic, self._on_race_state, map_qos)
         self._tf_buffer = Buffer()
-        self._tf_listener = TransformListener(self._tf_buffer, self)
+        # Private node and thread: spin_once on this node also serves /clock (1 kHz in sim), which left the TF buffer
+        # seconds behind, so start-line crossings and planning used stale poses.
+        self._tf_listener = TransformListener(self._tf_buffer, None, spin_thread=True)
 
     def _on_map(self, msg: OccupancyGrid):
         self._map = msg
