@@ -1,7 +1,9 @@
 # Nav2 for mapping-while-navigating: slam_toolbox provides /map and map->odom (no AMCL / map_server).
 # Regulated Pure Pursuit is used instead of MPPI to keep the Raspberry Pi 5 CPU budget for SLAM.
-# Competition tuning (docs/06_competition_rules.md): inflation is robot_radius + 20 mm (user decision, 2026-11-07),
-# so plans may pass close to walls; the loop patrol's `clearance` keeps waypoints on the track centre line.
+# Competition tuning (docs/06_competition_rules.md): hard margin robot_radius + 20 mm (user decision, 2026-11-07)
+# plus a soft, steep cost out to `inflation_radius` (cost_scaling_factor 10, ~1/3 cost 0.1 m off the wall): the
+# fastest path keeps ~0.1 m off inside corners, so RPP's lookahead collision check no longer stalls the robot
+# there, yet it can still squeeze to 20 mm to pass another robot.
 # RPP slows down near walls and other robots, and a stuck robot is detected within 2 s so the race behavior tree
 # (behavior_trees/navigate_to_pose_race.xml) backs it off before the 3 s wall-contact limit.
 
@@ -69,7 +71,7 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: true
       cost_scaling_dist: 0.35
       cost_scaling_gain: 1.0
-      inflation_cost_scaling_factor: 3.0
+      inflation_cost_scaling_factor: 10.0  # must match the costmaps' cost_scaling_factor
       # Only brake for tight turns (was 0.9 m): the centre-line path through corners is mostly gentler.
       regulated_linear_scaling_min_radius: 0.5
       regulated_linear_scaling_min_speed: 0.1
@@ -109,8 +111,8 @@ local_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.17
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.40
       always_send_full_costmap: true
 
 global_costmap:
@@ -158,8 +160,8 @@ global_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.17
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.40
       always_send_full_costmap: true
 
 planner_server:

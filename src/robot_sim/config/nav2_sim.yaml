@@ -11,14 +11,14 @@ local_costmap:
     ros__parameters:
       robot_radius: 0.11
       inflation_layer:
-        inflation_radius: 0.13
+        inflation_radius: 0.35
 
 global_costmap:
   global_costmap:
     ros__parameters:
       robot_radius: 0.11
       inflation_layer:
-        inflation_radius: 0.13
+        inflation_radius: 0.35
 
 velocity_smoother:
   ros__parameters:
