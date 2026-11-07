@@ -130,8 +130,9 @@ def _pipeline(context):
     )
 
     loop_patrol = Node(
-        package='autonom_bringup',
-        executable='loop_patrol.py',
+        package='autonom_patrol',
+        executable='loop_patrol',
+        name='loop_patrol',
         parameters=patrol_params + [sim_time],
         condition=IfCondition(LaunchConfiguration('autonomous_loop')),
         output='screen',

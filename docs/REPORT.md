@@ -3,7 +3,18 @@
 Branch `not_tested`. Everything below was verified in Gazebo Harmonic (RTX 4050) unless marked otherwise.
 Nothing has run on the real robot yet. Details per change are in `docs/HANDOFF.md`, section 1.
 
-## Result
+## Result (branch `optimised`, C++ loop patrol)
+
+Same race, same robot, with the loop patrol ported to C++ (`autonom_patrol`):
+
+| | Python patrol | C++ patrol |
+|---|---|---|
+| **Valid laps in 3 min** (ground truth) | 6 | **7** (63, 79, 95, 114, 130, 147, 163 s) |
+| Reverse crossings | 0 | 0 |
+| loop_patrol CPU / RAM (USS) | 64 % / 85 MB | **7.5 % / 25 MB** (~5 % of it is the sim `/clock`) |
+| Robot stack CPU / RAM (USS) | 346 % / 590 MB | **172 % / 461 MB** |
+
+## Result (branch `not_tested`, Python loop patrol)
 
 3-minute race on the Fibonacci arena (`ros2 launch robot_sim fibonacci_simulation.launch.py robot:=tb3_fast`),
 timed in simulated seconds from the start gate's release, lap count from Gazebo ground truth:
@@ -65,6 +76,12 @@ In simulation every node also handles `/clock` at 1 kHz (~5 % each, ~0.9 core in
 on the robot. Scaled to the Raspberry Pi 5 (4 cores, roughly 2–2.5× slower per core) the remaining ~2.5 laptop
 cores would still exceed the Pi: slam_toolbox and the Python loop patrol are the two big consumers.
 
+**After the C++ patrol (branch `optimised`), same measurement:** total **172 % / 461 MB**. loop_patrol 7.5 % /
+25 MB; slam_toolbox 18 % avg, 28 % peak / 59 MB. The slam_toolbox drop is not from the port: the measurement
+above was taken with `occupancy_threshold: 0.4`, which erased the arena's inner walls and left SLAM fighting a broken
+map; with 0.1 it converges cheaply. Without the ~0.9 core of sim `/clock` overhead the stack needs roughly
+0.8 laptop cores, about 2 Pi 5 cores: it should fit, to be confirmed on the Pi.
+
 ## To do
 
 Ordered by expected effect on the score.
@@ -84,8 +101,8 @@ Ordered by expected effect on the score.
 7. **Start signal driver**: button / RC5 IR publishing `/race/start_signal` (pin not in `docs/01`).
 8. **Official rule numbers** for the team rule "no reverse crossing of the start" (`docs/06` §4).
 9. CPU check on the Raspberry Pi 5 with rf2o, gyro, SLAM and Nav2 all running at race speed.
-10. **Port the loop patrol to C++** (64 % of a core in Python): planner and node, gtest ports of the planner tests.
-    In progress on branch `optimised`.
-11. **Reduce slam_toolbox CPU** (125 % avg, 306 % peak): feed it a decimated scan (as rf2o already gets) and
-    re-check the arena map; consider `throttle_scans` / `minimum_time_interval`.
+10. ~~Port the loop patrol to C++~~ **done on `optimised`**: `autonom_patrol` (planner library + event-driven node,
+    26 gtests), 64 % → 7.5 % CPU, 6 → 7 laps.
+11. ~~Reduce slam_toolbox CPU~~ mostly solved by the `occupancy_threshold` fix (125 % → 18 %). Scan decimation for
+    SLAM remains an option if the Pi needs it.
 12. Re-measure CPU and RAM after 10 and 11, without the 1 kHz `/clock` overhead (real-time run or on the Pi).
