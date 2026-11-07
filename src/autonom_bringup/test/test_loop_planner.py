@@ -2,7 +2,8 @@ import math
 
 import numpy as np
 
-from autonom_bringup.loop_planner import GridInfo, LoopSettings, plan_exploration_goal, plan_loop, safe_free_space
+from autonom_bringup.loop_planner import (
+    GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, start_ahead, plan_exploration_goal, plan_loop, safe_free_space)
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
 
@@ -97,3 +98,51 @@ def test_exploration_goal_prefers_cells_ahead_of_robot():
     assert facing_back is not None and facing_back[0] < 0.0
     facing_corner = plan_exploration_goal(_l_corridor(), INFO, (1.0, 0.0), settings, heading=0.0)
     assert facing_corner is not None and facing_corner[0] > 1.0
+
+
+def _run(monitor, path):
+    return [c for c in (monitor.update(xy) for xy in path) if c]
+
+
+def test_jitter_at_start_is_not_a_crossing():
+    monitor = StartLineMonitor(StartLine(0.0, 0.0, 0.0))
+    assert _run(monitor, [(0.0, 0.0), (-0.02, 0.0), (0.03, 0.01), (-0.05, 0.0), (0.5, 0.0)]) == []
+
+
+def test_backing_out_of_start_is_reverse():
+    monitor = StartLineMonitor(StartLine(0.0, 0.0, 0.0))
+    assert _run(monitor, [(0.0, 0.0), (-0.3, 0.0)]) == [-1]
+
+
+def test_full_lap_arriving_from_behind_is_forward():
+    monitor = StartLineMonitor(StartLine(0.0, 0.0, 0.0))
+    lap = [(0.5, 0.0), (2.0, 0.0), (2.0, 3.0), (-2.0, 3.0), (-2.0, 0.0), (-0.5, 0.0), (0.5, 0.0)]
+    assert _run(monitor, lap) == [1]
+
+
+def test_far_side_of_track_is_ignored():
+    monitor = StartLineMonitor(StartLine(0.0, 0.0, 0.0), half_width=1.0)
+    assert _run(monitor, [(0.5, 0.0), (2.0, 0.0), (0.5, 3.0), (-0.5, 3.0)]) == []
+
+
+def test_loop_orientation_matches_start_heading():
+    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings())
+    x0, y0, _ = ccw[0]
+    assert loop_follows_heading(ccw, (x0, y0), ccw[0][2])
+    assert not loop_follows_heading(ccw, (x0, y0), ccw[0][2] + math.pi)
+    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True))
+    assert loop_follows_heading(cw, (x0, y0), ccw[0][2] + math.pi)
+
+
+def test_exploration_distance_cap():
+    grid = np.full((200, 200), -1, dtype=np.int16)
+    grid[95:105, 40:160] = 0
+    goal = plan_exploration_goal(grid, INFO, (-2.5, 0.0), LoopSettings(clearance=0.1, max_exploration_distance=2.0))
+    assert goal is not None
+    assert math.dist(goal[:2], (-2.5, 0.0)) <= 2.0 + 1e-9
+
+
+def test_start_ahead_skips_waypoint_behind_robot():
+    loop = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)]
+    assert start_ahead(loop, (0.2, 0.0), 0.0)[0] == (1.0, 0.0, 0.0)
+    assert start_ahead(loop, (-0.2, 0.0), 0.0) == loop

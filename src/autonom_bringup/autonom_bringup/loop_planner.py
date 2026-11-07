@@ -32,6 +32,9 @@ class LoopSettings:
     min_spacing: float = 0.5
     free_threshold: int = 25
     clockwise: bool = False
+    # Exploration goals farther than this are ignored (0 = unlimited). On a closed track a far goal can be
+    # closer the other way round, and Nav2 would then drive back through the start point.
+    max_exploration_distance: float = 0.0
 
 
 def _dilate(mask: np.ndarray, iterations: int, border: bool) -> np.ndarray:
@@ -120,6 +123,8 @@ def plan_exploration_goal(
         return None
     xs, ys = reachable
     distances = np.hypot(xs - robot_xy[0], ys - robot_xy[1])
+    if settings.max_exploration_distance > 0.0:
+        distances = np.where(distances <= settings.max_exploration_distance, distances, -1.0)
     if heading is not None:
         ahead = (xs - robot_xy[0]) * math.cos(heading) + (ys - robot_xy[1]) * math.sin(heading) > 0.0
         if np.any(ahead & (distances >= settings.min_spacing)):
@@ -164,3 +169,70 @@ def _enforce_spacing(points: List[Tuple[float, float]], min_spacing: float) -> L
     if len(spaced) > 1 and math.dist(spaced[0], spaced[-1]) < min_spacing:
         spaced.pop()
     return spaced
+
+
+@dataclass(frozen=True)
+class StartLine:
+    """Line through the start position, perpendicular to the start heading (the race direction)."""
+
+    x: float
+    y: float
+    heading: float
+
+    def local(self, xy: Tuple[float, float]) -> Tuple[float, float]:
+        """(along, lateral): signed distance ahead of the line and offset along it."""
+        dx, dy = xy[0] - self.x, xy[1] - self.y
+        cos_h, sin_h = math.cos(self.heading), math.sin(self.heading)
+        return dx * cos_h + dy * sin_h, -dx * sin_h + dy * cos_h
+
+
+class StartLineMonitor:
+    """Detects start-line crossings with hysteresis.
+
+    The side of the line is tracked only inside the start zone (|lateral| <= half_width, |along| <= depth), so
+    the far side of the track, which lies on the same infinite line, is ignored. A side only changes once the
+    robot is more than `margin` past the line, so localisation jitter at the start is not a crossing. The robot
+    begins on the forward side: backing out of the start position counts as a reverse crossing.
+    """
+
+    def __init__(self, line: StartLine, half_width: float = 1.0, depth: float = 1.0, margin: float = 0.10):
+        self.line = line
+        self.half_width = half_width
+        self.depth = depth
+        self.margin = margin
+        self._side: Optional[int] = 1
+
+    def update(self, xy: Tuple[float, float]) -> int:
+        """+1 for a forward crossing (lap completed), -1 for a reverse crossing, 0 otherwise."""
+        along, lateral = self.line.local(xy)
+        if abs(lateral) > self.half_width or abs(along) > self.depth:
+            self._side = None
+            return 0
+        if abs(along) <= self.margin:
+            return 0
+        side = 1 if along > 0.0 else -1
+        previous, self._side = self._side, side
+        if previous is None or previous == side:
+            return 0
+        return side
+
+
+def loop_follows_heading(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float) -> bool:
+    """Whether the loop, near `xy`, runs in the direction of `heading`."""
+    if len(waypoints) < 3:
+        return True
+    points = [(x, y) for x, y, _ in waypoints]
+    i = min(range(len(points)), key=lambda k: math.dist(points[k], xy))
+    after, before = points[(i + 1) % len(points)], points[i - 1]
+    return (after[0] - before[0]) * math.cos(heading) + (after[1] - before[1]) * math.sin(heading) >= 0.0
+
+
+def start_ahead(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float) -> List[Waypoint]:
+    """Rotate the loop so its first waypoint lies ahead of the robot, never just behind it."""
+    if len(waypoints) < 2:
+        return waypoints
+    cos_h, sin_h = math.cos(heading), math.sin(heading)
+    first = waypoints[0]
+    if (first[0] - xy[0]) * cos_h + (first[1] - xy[1]) * sin_h >= 0.0:
+        return waypoints
+    return waypoints[1:] + waypoints[:1]
