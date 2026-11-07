@@ -114,6 +114,73 @@ Mask safeFreeSpace(const Grid & grid, int clearance_cells, int free_threshold)
   return safe;
 }
 
+int clearRivalTraces(Grid & grid, double max_size, int max_cells, int free_threshold)
+{
+  if (!grid.valid() || max_size <= 0.0 || max_cells <= 0) {
+    return 0;
+  }
+  const int max_extent = static_cast<int>(std::floor(max_size / grid.resolution + 1e-9));
+  const auto occupied = [&grid, free_threshold](int row, int col) {
+    return grid.data[grid.index(row, col)] >= free_threshold;
+  };
+  std::vector<std::uint8_t> seen(grid.data.size(), 0);
+  std::vector<Cell> blob;
+  int cleared = 0;
+  for (int row = 0; row < grid.height; ++row) {
+    for (int col = 0; col < grid.width; ++col) {
+      if (seen[grid.index(row, col)] || !occupied(row, col)) {
+        continue;
+      }
+      // Flood one 8-connected blob, noting its extent and whether anything but free space touches it.
+      blob.clear();
+      std::deque<Cell> queue{{row, col}};
+      seen[grid.index(row, col)] = 1;
+      int r0 = row, r1 = row, c0 = col, c1 = col;
+      bool island = true;
+      while (!queue.empty()) {
+        const Cell c = queue.front();
+        queue.pop_front();
+        blob.push_back(c);
+        r0 = std::min(r0, c.row);
+        r1 = std::max(r1, c.row);
+        c0 = std::min(c0, c.col);
+        c1 = std::max(c1, c.col);
+        for (int dr = -1; dr <= 1; ++dr) {
+          for (int dc = -1; dc <= 1; ++dc) {
+            const int nr = c.row + dr;
+            const int nc = c.col + dc;
+            if ((dr == 0 && dc == 0)) {
+              continue;
+            }
+            if (!grid.inside(nr, nc)) {
+              island = false;  // touches the map edge: unknown beyond
+              continue;
+            }
+            const auto i = grid.index(nr, nc);
+            if (occupied(nr, nc)) {
+              if (!seen[i]) {
+                seen[i] = 1;
+                queue.push_back({nr, nc});
+              }
+            } else if (!grid.isFree(i, free_threshold)) {
+              island = false;  // touches unknown space
+            }
+          }
+        }
+      }
+      const bool small = r1 - r0 + 1 <= max_extent && c1 - c0 + 1 <= max_extent &&
+        static_cast<int>(blob.size()) <= max_cells;
+      if (island && small) {
+        for (const auto & c : blob) {
+          grid.data[grid.index(c.row, c.col)] = 0;
+        }
+        cleared += static_cast<int>(blob.size());
+      }
+    }
+  }
+  return cleared;
+}
+
 std::vector<int> drivingDistance(const Mask & passable, int width, int height, Cell seed)
 {
   std::vector<int> distance(passable.size(), -1);

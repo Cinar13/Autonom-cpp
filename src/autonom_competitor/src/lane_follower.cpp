@@ -16,6 +16,19 @@ constexpr double kBacktrack = 0.1;     // m searched behind the last position (p
 
 }  // namespace
 
+bool robotAhead(const Pose2D & self, const std::vector<Point> & others, double distance, double half_width)
+{
+  const double c = std::cos(self.yaw);
+  const double s = std::sin(self.yaw);
+  return std::any_of(others.begin(), others.end(), [&](const Point & p) {
+    const double dx = p.x - self.x;
+    const double dy = p.y - self.y;
+    const double forward = c * dx + s * dy;
+    const double lateral = -s * dx + c * dy;
+    return forward > 0.0 && forward <= distance && std::abs(lateral) <= half_width;
+  });
+}
+
 LaneFollower::LaneFollower(std::vector<Point> centre_line, const LaneFollowerSettings & settings)
 : points_(std::move(centre_line)), settings_(settings)
 {

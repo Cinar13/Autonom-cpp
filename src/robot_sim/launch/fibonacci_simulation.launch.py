@@ -15,6 +15,7 @@ competitors:=true (default, docs/07) adds two 12 cm x 12 cm competitor robots on
 the left and competitor 2 to the right of the main robot (which stays in the middle). They drive lanes 0.10 m left /
 right of the track centre line (config/fibonacci_centre_line.yaml) at competitor_1_speed / competitor_2_speed,
 in the main robot's race direction, and wait for /race/state RACING like the main robot (5 s start delay).
+They stop while the main robot or the other competitor is right ahead (ground truth), so they never ram it.
 """
 
 import math
@@ -100,6 +101,8 @@ def _competitors(context, sim_share):
                 'lane_offset': side * LANE_OFFSET,
                 'merge_distance': 1.5,
                 'reverse': reverse,
+                # Ground truth of the main robot and the other competitor: stop instead of ramming them.
+                'others': ['/ground_truth/odom'] + [f'/{other}/odom' for other, _, _ in COMPETITORS if other != name],
             }],
             remappings=[('odom', f'/{name}/odom'), ('cmd_vel', f'/{name}/cmd_vel')],
         ))

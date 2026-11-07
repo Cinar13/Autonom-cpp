@@ -75,6 +75,14 @@ struct LoopSettings
 /// Free cells at least `clearance_cells` (4-connected steps) away from occupied, unknown and out-of-map cells.
 Mask safeFreeSpace(const Grid & grid, int clearance_cells, int free_threshold);
 
+/// Clears traces of moving robots from a SLAM map: every 8-connected blob of occupied cells that is at most
+/// `max_size` across (bounding box) and at most `max_cells` cells, and whose every neighbour is known free space,
+/// becomes free. Walls are never such islands: they are long, connected to the wall structure or border unknown
+/// space. slam_toolbox keeps a cell occupied while >= occupancy_threshold (0.1) of the rays that reached it ended
+/// there, so a rival that stood somewhere stays in /map long after it left and blocks the track topology.
+/// Returns the number of cells cleared.
+int clearRivalTraces(Grid & grid, double max_size, int max_cells, int free_threshold);
+
 /// Cells of `passable` 4-connected to `seed`.
 Mask reachableFrom(const Mask & passable, int width, int height, Cell seed);
 

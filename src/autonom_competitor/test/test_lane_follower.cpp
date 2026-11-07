@@ -125,6 +125,17 @@ TEST(LaneFollower, ProgressNeverJumpsToTheCorridorBehindTheWall)
   EXPECT_LT(f.progress(), before + 0.5);
 }
 
+TEST(LaneFollower, RobotAheadOnlyCountsTheCorridorInFront)
+{
+  using autonom_competitor::robotAhead;
+  const Pose2D self{0.0, 0.0, M_PI / 2};  // facing +y
+  EXPECT_TRUE(robotAhead(self, {{0.05, 0.3}}, 0.35, 0.18));    // ahead, slightly off-centre
+  EXPECT_FALSE(robotAhead(self, {{0.0, 0.5}}, 0.35, 0.18));    // ahead but further than the distance
+  EXPECT_FALSE(robotAhead(self, {{0.2, 0.05}}, 0.35, 0.18));   // beside (start line neighbour)
+  EXPECT_FALSE(robotAhead(self, {{0.0, -0.2}}, 0.35, 0.18));   // behind
+  EXPECT_FALSE(robotAhead(self, {}, 0.35, 0.18));
+}
+
 TEST(LaneFollower, DrivesFullLapsOnItsLane)
 {
   // Closed loop with unicycle kinematics: two laps of the square on a 0.15 m left lane, starting 0.25 m off it.

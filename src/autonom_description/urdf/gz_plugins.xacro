@@ -2,7 +2,8 @@
 <!--
   Gazebo Harmonic systems shared by every robot description used in simulation.
   Topic contract with robot_sim/config/bridge.yaml:
-    cmd_vel (in), odom, joint_states, scan, imu, /sim/tf (DiffDrive TF, kept off /tf so the EKF owns odom->base).
+    cmd_vel (in), odom, joint_states, scan, imu, /sim/tf (DiffDrive TF, kept off /tf so the EKF owns odom->base),
+    /ground_truth/odom (world-frame pose for sim tools: competitor robots give way to it; never fused or on /tf).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -101,6 +102,21 @@
           </linear_acceleration>
         </imu>
       </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- Ground-truth pose in the world frame, for simulation tools only (the competitor robots of docs/07 give way to
+       it, measurements). Not bridged onto /tf and never fused by the EKF. -->
+  <xacro:macro name="gz_ground_truth" params="base_frame">
+    <gazebo>
+      <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>world</odom_frame>
+        <robot_base_frame>${base_frame}</robot_base_frame>
+        <odom_topic>/ground_truth/odom</odom_topic>
+        <tf_topic>/ground_truth/tf</tf_topic>
+        <odom_publish_frequency>30</odom_publish_frequency>
+        <dimensions>2</dimensions>
+      </plugin>
     </gazebo>
   </xacro:macro>
 

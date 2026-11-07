@@ -13,6 +13,7 @@
   <xacro:gz_joint_state_publisher left_joint="wheel_left_joint" right_joint="wheel_right_joint"/>
   <xacro:gz_rplidar_s3 link="base_scan"/>
   <xacro:gz_imu link="imu_link" update_rate="200"/>
+  <xacro:gz_ground_truth base_frame="base_footprint"/>
   <xacro:gz_frictionless link="caster_back_link"/>
 
 </robot>

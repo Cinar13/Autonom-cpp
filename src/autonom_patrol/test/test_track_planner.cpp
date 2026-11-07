@@ -250,6 +250,46 @@ TEST(TrackPlanner, ExplorationGoalPrefersCellsAheadOfRobot)
   EXPECT_GT(facing_corner->x, 1.0);
 }
 
+TEST(TrackPlanner, RivalTraceInTheCorridorIsCleared)
+{
+  Grid g = makeGrid(200, 200, -1);
+  fill(g, 94, 106, 40, 160, 0);
+  fill(g, 93, 94, 40, 160, 100);
+  fill(g, 106, 107, 40, 160, 100);
+  fill(g, 99, 102, 120, 123, 100);  // 3 x 3 cells (0.15 m) left behind by a rival
+  EXPECT_EQ(clearRivalTraces(g, 0.25, 30, 25), 9);
+  EXPECT_EQ(g.data[g.index(100, 121)], 0);
+  EXPECT_EQ(g.data[g.index(93, 100)], 100);  // walls stay
+}
+
+TEST(TrackPlanner, BlobTouchingAWallOrUnknownSpaceStays)
+{
+  Grid g = makeGrid(200, 200, -1);
+  fill(g, 94, 106, 40, 160, 0);
+  fill(g, 93, 94, 40, 160, 100);
+  fill(g, 94, 96, 100, 102, 100);   // bump on the wall: part of the wall component
+  fill(g, 100, 102, 158, 160, 100); // small blob at the corridor's open end, next to unknown space
+  EXPECT_EQ(clearRivalTraces(g, 0.25, 30, 25), 0);
+}
+
+TEST(TrackPlanner, LargeIslandsStay)
+{
+  Grid g = makeGrid(200, 200, 0);
+  fill(g, 90, 92, 60, 140, 100);  // free-standing wall 4 m long, 0.1 m thick
+  fill(g, 120, 127, 100, 107, 100);  // 0.35 m block: larger than a rival
+  EXPECT_EQ(clearRivalTraces(g, 0.25, 30, 25), 0);
+}
+
+TEST(TrackPlanner, ArenaWallsSurviveTraceClearing)
+{
+  // The arena's U is a free-standing island; the divider hangs from the top wall. Neither may be cleared.
+  Grid g = fibonacciArena();
+  const auto before = g.data;
+  fill(g, 20, 23, 20, 23, 100);  // one rival trace in the bottom-left corridor
+  EXPECT_EQ(clearRivalTraces(g, 0.25, 48, 25), 9);
+  EXPECT_EQ(g.data, before);
+}
+
 TEST(TrackPlanner, RivalsBesideTheStartDoNotTrapTheRobot)
 {
   // Start line with a rival robot on each side (docs/07): the clearance around them leaves a band of unsafe cells

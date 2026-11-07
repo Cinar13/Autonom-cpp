@@ -36,5 +36,9 @@ loop_patrol:
     rear_gate_update_distance: 0.2
     rear_gate_mask_topic: /rear_gate_mask
     behind_drop_radius: 0.5
+    # Rival robots (2-4 on the track, <= 15 x 15 cm) stay in /map after they moved on and froze the patrol: occupied
+    # islands up to this size (m across) and area (m^2) inside known free space are ignored for planning.
+    rival_trace_max_size: 0.25
+    rival_trace_max_area: 0.05
     wait_for_race_start: true
     race_state_topic: /race/state

@@ -71,6 +71,10 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   settings_.cut_offset = declare_parameter<double>("rear_gate_offset", 0.4);
   settings_.cut_half_width = declare_parameter<double>("cut_half_width", 1.5);
   settings_.max_exploration_distance = declare_parameter<double>("max_exploration_distance", 2.5);
+  // Rival robots leave occupied traces in /map after they moved on; small occupied islands inside known free
+  // space are cleared before planning (clearRivalTraces). 0 disables. Nav2's live costmap still sees real robots.
+  rival_trace_max_size_ = declare_parameter<double>("rival_trace_max_size", 0.0);
+  rival_trace_max_area_ = declare_parameter<double>("rival_trace_max_area", 0.0);
   const auto map_topic = declare_parameter<std::string>("map_topic", "/map");
   const auto race_state_topic = declare_parameter<std::string>("race_state_topic", "/race/state");
 
@@ -200,6 +204,13 @@ std::optional<Grid> LoopPatrolNode::currentGrid() const
   grid.data.assign(map_->data.begin(), map_->data.end());
   if (!grid.valid()) {
     return std::nullopt;
+  }
+  if (rival_trace_max_size_ > 0.0 && rival_trace_max_area_ > 0.0) {
+    const int max_cells = static_cast<int>(rival_trace_max_area_ / (grid.resolution * grid.resolution));
+    const int cleared = clearRivalTraces(grid, rival_trace_max_size_, max_cells, settings_.free_threshold);
+    if (cleared > 0) {
+      RCLCPP_INFO_THROTTLE(get_logger(), steady_clock_, kThrottleMs, "Ignoring %d map cell(s) of rival traces", cleared);
+    }
   }
   return grid;
 }

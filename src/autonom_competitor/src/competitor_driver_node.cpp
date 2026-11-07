@@ -39,6 +39,19 @@ CompetitorDriverNode::CompetitorDriverNode(const rclcpp::NodeOptions & options)
   s.search_window = declare_parameter<double>("search_window", s.search_window);
   follower_ = std::make_unique<LaneFollower>(std::move(path), s);
   wait_for_race_start_ = declare_parameter<bool>("wait_for_race_start", true);
+  // Give way: stop while another robot's centre is within give_way_distance ahead and give_way_half_width of the
+  // heading line. `others`: ground-truth odometry topics of the other robots (world frame).
+  give_way_distance_ = declare_parameter<double>("give_way_distance", give_way_distance_);
+  give_way_half_width_ = declare_parameter<double>("give_way_half_width", give_way_half_width_);
+  const auto other_topics = declare_parameter<std::vector<std::string>>("others", std::vector<std::string>{});
+  others_.resize(other_topics.size());
+  for (std::size_t i = 0; i < other_topics.size(); ++i) {
+    other_subs_.push_back(create_subscription<nav_msgs::msg::Odometry>(
+      other_topics[i], rclcpp::SensorDataQoS(), [this, i](const nav_msgs::msg::Odometry & msg) {
+        others_[i].position = Point{msg.pose.pose.position.x, msg.pose.pose.position.y};
+        others_[i].stamp = steady_clock_.now();
+      }));
+  }
   const auto race_state_topic = declare_parameter<std::string>("race_state_topic", "/race/state");
   const double rate = declare_parameter<double>("rate", 20.0);
 
@@ -79,6 +92,18 @@ void CompetitorDriverNode::onTick()
   if (!driving_) {
     RCLCPP_INFO(get_logger(), "Driving");
     driving_ = true;
+  }
+  std::vector<Point> nearby;
+  const auto now = steady_clock_.now();
+  for (const auto & other : others_) {
+    if (other.position && (now - other.stamp).seconds() < 1.0) {
+      nearby.push_back(*other.position);
+    }
+  }
+  if (robotAhead(*pose_, nearby, give_way_distance_, give_way_half_width_)) {
+    RCLCPP_INFO_THROTTLE(get_logger(), steady_clock_, 5000, "Giving way to a robot ahead");
+    publish(0.0, 0.0);
+    return;
   }
   const auto cmd = follower_->update(*pose_);
   publish(cmd.linear, cmd.angular);

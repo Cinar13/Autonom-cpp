@@ -71,6 +71,8 @@ private:
   bool wait_for_race_start_{true};
   std::string direction_{"auto"};
   double start_line_half_width_{1.0};
+  double rival_trace_max_size_{0.0};
+  double rival_trace_max_area_{0.0};
   LoopSettings settings_;
 
   // State

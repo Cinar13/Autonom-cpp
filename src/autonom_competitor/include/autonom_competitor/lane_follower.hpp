@@ -37,6 +37,12 @@ struct LaneFollowerSettings
   double search_window{1.0};      // m of centre line searched ahead of the last position (no jumping across walls)
 };
 
+/// True when the centre of one of `others` lies ahead of `self` within `distance` and within `half_width` of its
+/// heading line (robot frame: 0 < forward <= distance, |lateral| <= half_width). Competitors stop for it instead of
+/// ramming (docs/06 section 2): a blind path follower pushed the main robot over in the simulation.
+[[nodiscard]] bool robotAhead(const Pose2D & self, const std::vector<Point> & others, double distance,
+  double half_width);
+
 /// Pure-pursuit follower of a closed lane around the race track (ROS-free, unit-tested).
 ///
 /// The lane is the closed centre line shifted sideways by `lane_offset`. The robot's own lateral offset at the

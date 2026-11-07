@@ -135,6 +135,7 @@
     <xacro:gz_joint_state_publisher left_joint="left_wheel_joint" right_joint="right_wheel_joint"/>
     <xacro:gz_rplidar_s3 link="laser"/>
     <xacro:gz_imu link="imu_link" update_rate="100"/>
+    <xacro:gz_ground_truth base_frame="base_footprint"/>
     <xacro:gz_frictionless link="caster_link"/>
   </xacro:if>
 
