@@ -15,7 +15,7 @@ Until the ring is closed, `plan_exploration_goal` pushes the map frontier out ah
 
 from dataclasses import dataclass
 import math
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
@@ -287,12 +287,15 @@ class StartLineMonitor:
         self.half_width = half_width
         self.depth = depth
         self.margin = margin
+        # Optional wall-aware zone test (see start_zone_mask): positions inside the box but behind a wall,
+        # e.g. a parallel passage on the other side of a thin wall, are not part of the start zone.
+        self.zone: Optional[Callable[[Tuple[float, float]], bool]] = None
         self._side: Optional[int] = 1
 
     def update(self, xy: Tuple[float, float]) -> int:
         """+1 for a forward crossing (lap completed), -1 for a reverse crossing, 0 otherwise."""
         along, lateral = self.line.local(xy)
-        if abs(lateral) > self.half_width or abs(along) > self.depth:
+        if abs(lateral) > self.half_width or abs(along) > self.depth or (self.zone is not None and not self.zone(xy)):
             self._side = None
             return 0
         if abs(along) <= self.margin:
@@ -366,3 +369,32 @@ def drop_behind(waypoints: List[Waypoint], xy: Tuple[float, float], heading: flo
     cos_h, sin_h = math.cos(heading), math.sin(heading)
     return [w for w in waypoints
             if not ((w[0] - xy[0]) * cos_h + (w[1] - xy[1]) * sin_h < 0.0 and math.dist(w[:2], xy) < radius)]
+
+
+def start_zone_mask(
+    grid: np.ndarray, info: GridInfo, line: StartLine, half_width: float, depth: float, free_threshold: int = 25,
+) -> Optional[np.ndarray]:
+    """Free cells of the start box that connect to the start position without crossing a wall.
+
+    On a compact track a parallel passage can run within the start box on the other side of a thin wall (the
+    Fibonacci arena's U interior runs 0.3-0.4 m from the start line, westwards); without this test, driving
+    through it reads as a reverse crossing.
+    """
+    if grid.ndim != 2 or info.resolution <= 0.0:
+        return None
+    xs, ys = _cell_centres(np.ones(grid.shape, dtype=bool), info)
+    xs, ys = xs.reshape(grid.shape), ys.reshape(grid.shape)
+    along, lateral = line.local((xs, ys))
+    box = (np.abs(along) <= depth) & (np.abs(lateral) <= half_width)
+    free = (grid >= 0) & (grid < free_threshold) & box
+    seed = _nearest_cell(free, info, (line.x, line.y))
+    if seed is None:
+        return None
+    return reachable_from(free, seed)
+
+
+def mask_lookup(mask: np.ndarray, info: GridInfo) -> Callable[[Tuple[float, float]], bool]:
+    def inside(xy: Tuple[float, float]) -> bool:
+        row, col = _cell_of(info, xy)
+        return 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1] and bool(mask[row, col])
+    return inside

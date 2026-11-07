@@ -21,7 +21,7 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 from autonom_bringup.loop_planner import (
     GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_is_clockwise, plan_exploration_goal,
-    plan_loop, rear_gate_cells, start_ahead)
+    mask_lookup, plan_loop, rear_gate_cells, start_ahead, start_zone_mask)
 
 
 class LoopPatrol(Node):
@@ -131,6 +131,11 @@ class LoopPatrol(Node):
         info = self._map.info
         grid = np.asarray(self._map.data, dtype=np.int16).reshape(info.height, info.width)
         grid_info = GridInfo(info.resolution, info.origin.position.x, info.origin.position.y)
+        # Wall-aware start zone from the latest map: a passage behind a wall is never "at the start line".
+        zone = start_zone_mask(grid, grid_info, self.start_line, self.start_line_half_width,
+                               self._start_monitor.depth, self.settings.free_threshold)
+        if zone is not None:
+            self._start_monitor.zone = mask_lookup(zone, grid_info)
         known_area = np.count_nonzero(grid >= 0) * info.resolution ** 2
 
         if known_area >= self.min_known_area:

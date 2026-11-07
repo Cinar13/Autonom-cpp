@@ -4,7 +4,7 @@ import numpy as np
 
 from autonom_bringup.loop_planner import (
     GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_is_clockwise, plan_exploration_goal,
-    plan_loop, rear_gate_cells, safe_free_space, start_ahead)
+    plan_loop, rear_gate_cells, safe_free_space, start_ahead, mask_lookup, start_zone_mask)
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
 RING = LoopSettings(clearance=0.3, waypoint_spacing=1.0)
@@ -268,3 +268,18 @@ def test_exploration_follows_centre_line_round_the_arm_hairpin():
     c = int((x - ARENA_INFO.origin_x) / ARENA_INFO.resolution)
     assert wall_distance[r, c] >= 0.2       # centre of the passage, not a corner pocket
     assert y < 1.0                          # not pressed against the top wall
+
+
+
+def test_passage_behind_a_wall_is_not_in_the_start_zone():
+    # Regression (arena): start line in the bottom corridor; the U interior runs westwards within the start box
+    # on the other side of the U's bottom wall. Driving through it must not count as a reverse crossing.
+    grid = _fibonacci_arena()
+    line = StartLine(0.0, -0.735, 0.0)
+    monitor = StartLineMonitor(line, half_width=0.6, depth=1.0)
+    monitor.zone = mask_lookup(start_zone_mask(grid, ARENA_INFO, line, 0.6, 1.0), ARENA_INFO)
+    assert monitor.zone((0.3, -0.735)) and not monitor.zone((0.0, -0.2))
+    u_passage_westwards = [(0.4, -0.25), (0.2, -0.25), (0.0, -0.25), (-0.2, -0.25), (-0.4, -0.25)]
+    assert [c for c in (monitor.update(xy) for xy in u_passage_westwards) if c] == []
+    without_zone = StartLineMonitor(line, half_width=0.6, depth=1.0)
+    assert -1 in [without_zone.update(xy) for xy in [(0.3, -0.735)] + u_passage_westwards]
