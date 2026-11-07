@@ -70,6 +70,9 @@ def generate_launch_description():
             description='Run rf2o laser odometry and fuse it in the EKF (off by default to save CPU)'),
         DeclareLaunchArgument(
             'autonomous_loop', default_value='true', description='Run the loop patrol once Nav2 and the map are up'),
+        DeclareLaunchArgument(
+            'auto_start', default_value='true',
+            description='Send the race start signal on launch (false: call /race/start yourself)'),
         DeclareLaunchArgument('x', default_value='0.0', description='Spawn x [m]'),
         DeclareLaunchArgument('y', default_value='-4.7', description='Spawn y [m] (on the circuit2 track)'),
         DeclareLaunchArgument('yaw', default_value='-1.5708', description='Spawn yaw [rad]'),
@@ -129,6 +132,7 @@ def generate_launch_description():
             'use_imu': LaunchConfiguration('use_imu'),
             'use_rf2o': LaunchConfiguration('use_rf2o'),
             'autonomous_loop': LaunchConfiguration('autonomous_loop'),
+            'auto_start': LaunchConfiguration('auto_start'),
             'slam_params_overlay': LaunchConfiguration('slam_params_overlay'),
             'nav2_params_overlay': LaunchConfiguration('nav2_params_overlay'),
             'nav2_startup_delay': '10.0',

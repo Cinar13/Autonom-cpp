@@ -3,7 +3,7 @@
 <package format="3">
   <name>autonom_localization</name>
   <version>0.1.0</version>
-  <description>Odometry conditioning shared by the real robot and the simulation (covariance relay for EKF inputs, scan decimation for rf2o).</description>
+  <description>Odometry conditioning shared by the real robot and the simulation (covariance relay for EKF inputs, scan decimation for rf2o, speckle filter for the Nav2 costmaps).</description>
   <maintainer email="cinarozturk198@gmail.com">Çınar Öztürk</maintainer>
   <license>Apache-2.0</license>
 
@@ -13,6 +13,8 @@
   <depend>rclcpp_components</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
