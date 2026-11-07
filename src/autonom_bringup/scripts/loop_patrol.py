@@ -3,7 +3,6 @@
 
 import math
 import time
-from dataclasses import replace
 
 import numpy as np
 import rclpy
@@ -21,7 +20,8 @@ from rclpy.time import Time
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from autonom_bringup.loop_planner import (
-    GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, plan_exploration_goal, plan_loop, start_ahead)
+    GridInfo, LoopSettings, StartLine, StartLineMonitor, drop_behind, loop_is_clockwise, plan_exploration_goal,
+    mask_lookup, plan_loop, rear_gate_cells, start_ahead, start_zone_mask)
 
 
 class LoopPatrol(Node):
@@ -33,6 +33,17 @@ class LoopPatrol(Node):
         self.min_known_area = self.declare_parameter('min_known_area', 4.0).value
         self.lap_pause = self.declare_parameter('lap_pause', 2.0).value
         self.retry_period = self.declare_parameter('retry_period', 3.0).value
+        self.preempt_poses_remaining = self.declare_parameter('preempt_poses_remaining', 1).value
+        # Rear gate: a keepout wall across the track behind the robot, so Nav2 can never plan a path that
+        # turns back (no reverse travel, docs/06 section 4). Needs the global costmap KeepoutFilter.
+        self.rear_gate_enabled = self.declare_parameter('rear_gate_enabled', True).value
+        self.rear_gate_step = self.declare_parameter('rear_gate_update_distance', 0.3).value
+        self.behind_drop_radius = self.declare_parameter('behind_drop_radius', 2.0).value
+        self._gate_anchor = None
+        self._gate_direction = None
+        self._gate_pub = self.create_publisher(
+            OccupancyGrid, self.declare_parameter('rear_gate_mask_topic', '/rear_gate_mask').value,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE))
         self.wait_for_race_start = self.declare_parameter('wait_for_race_start', True).value
         # 'auto': laps run the way the robot faced at the start; it must never cross the start backwards.
         self.direction = self.declare_parameter('direction', 'auto').value
@@ -42,16 +53,20 @@ class LoopPatrol(Node):
         self.start_line = None
         self._start_monitor = None
         self.laps_completed = 0
+        self._last_crossing = None
+        self._last_loop = []
         self.reverse_crossings = 0
         self.settings = LoopSettings(
-            waypoint_count=self.declare_parameter('waypoint_count', 8).value,
             clearance=self.declare_parameter('clearance', 0.35).value,
-            max_radius=self.declare_parameter('max_radius', 0.0).value,
             min_spacing=self.declare_parameter('min_spacing', 0.5).value,
             free_threshold=self.declare_parameter('free_threshold', 25).value,
-            clockwise=self.direction == 'clockwise',
+            waypoint_spacing=self.declare_parameter('waypoint_spacing', 1.0).value,
+            min_loop_length=self.declare_parameter('min_loop_length', 2.0).value,
+            cut_offset=self.declare_parameter('rear_gate_offset', 0.4).value,
+            cut_half_width=self.declare_parameter('cut_half_width', 1.5).value,
             max_exploration_distance=self.declare_parameter('max_exploration_distance', 2.5).value,
         )
+        self.rear_gate_offset = self.settings.cut_offset
         map_topic = self.declare_parameter('map_topic', '/map').value
         race_state_topic = self.declare_parameter('race_state_topic', '/race/state').value
 
@@ -109,11 +124,18 @@ class LoopPatrol(Node):
         if self.start_line is None:
             self.start_line = StartLine(*pose)
             self._start_monitor = StartLineMonitor(self.start_line, half_width=self.start_line_half_width)
+            self._gate_anchor, self._gate_direction = robot_xy, pose[2]
+            self.publish_rear_gate()
             self.get_logger().info(
                 f'Start line at ({pose[0]:.2f}, {pose[1]:.2f}), race heading {pose[2]:.2f} rad')
         info = self._map.info
         grid = np.asarray(self._map.data, dtype=np.int16).reshape(info.height, info.width)
         grid_info = GridInfo(info.resolution, info.origin.position.x, info.origin.position.y)
+        # Wall-aware start zone from the latest map: a passage behind a wall is never "at the start line".
+        zone = start_zone_mask(grid, grid_info, self.start_line, self.start_line_half_width,
+                               self._start_monitor.depth, self.settings.free_threshold)
+        if zone is not None:
+            self._start_monitor.zone = mask_lookup(zone, grid_info)
         known_area = np.count_nonzero(grid >= 0) * info.resolution ** 2
 
         if known_area >= self.min_known_area:
@@ -121,7 +143,8 @@ class LoopPatrol(Node):
             if waypoints:
                 return 'loop', waypoints
 
-        goal = plan_exploration_goal(grid, grid_info, robot_xy, self.settings, heading)
+        travel = self._gate_direction if self._gate_direction is not None else heading
+        goal = plan_exploration_goal(grid, grid_info, robot_xy, self.settings, travel)
         if goal is not None:
             return 'explore', [goal]
 
@@ -156,31 +179,80 @@ class LoopPatrol(Node):
                 self.destroy_client(client)
 
     def _plan_race_loop(self, grid, grid_info, robot_xy, heading):
-        """Loop oriented with the race direction, starting at the first waypoint ahead of the robot."""
-        waypoints = plan_loop(grid, grid_info, robot_xy, self.settings)
+        """Lap along the track in the direction of travel, starting at the first waypoint ahead of the robot."""
+        direction = self._gate_direction if self._gate_direction is not None else heading
+        waypoints = plan_loop(grid, grid_info, robot_xy, direction, self.settings)
         if not waypoints:
+            if self._last_loop:
+                # An obstacle on the track (another robot) breaks the closed ring in the map for a while;
+                # keep lapping on the last valid loop and let Nav2 route around the obstacle.
+                self.get_logger().info('Track ring not closed right now; reusing the last loop',
+                                       throttle_duration_sec=10.0)
+                return self._ahead_only(self._last_loop, robot_xy, heading)
             return []
-        line = self.start_line
-        if not loop_follows_heading(waypoints, (line.x, line.y), line.heading):
-            if self.direction == 'auto':
-                waypoints = plan_loop(grid, grid_info, robot_xy, replace(self.settings, clockwise=True))
-            else:
-                self.get_logger().error(
-                    f"direction '{self.direction}' runs against the start heading: "
-                    'the robot would cross the start line backwards. Not driving this loop.',
-                    throttle_duration_sec=10.0)
-                return []
-        return start_ahead(waypoints, robot_xy, heading)
+        if self.direction != 'auto' and loop_is_clockwise(waypoints) != (self.direction == 'clockwise'):
+            # Laps follow the travel direction set at the start; a forced direction that disagrees would need a
+            # U-turn, which is never allowed.
+            self.get_logger().error(
+                f"direction '{self.direction}' runs against the robot's start heading: place the robot facing "
+                'the race direction. Not driving this loop.', throttle_duration_sec=10.0)
+            return []
+        self._last_loop = waypoints
+        return self._ahead_only(waypoints, robot_xy, heading)
+
+    def _ahead_only(self, waypoints, robot_xy, heading):
+        direction = self._gate_direction if self._gate_direction is not None else heading
+        # Treat the lap as a cycle that starts at the waypoint nearest the robot (needed when a stored lap is
+        # reused from another position), then skip anything just behind the robot.
+        nearest = min(range(len(waypoints)), key=lambda k: math.dist(waypoints[k][:2], robot_xy))
+        cycle = waypoints[nearest:] + waypoints[:nearest]
+        return start_ahead(drop_behind(cycle, robot_xy, direction, self.behind_drop_radius), robot_xy, direction)
+
+    def update_rear_gate(self, pose):
+        """Advance the gate with the robot's forward travel; never flip it when the robot moves backwards."""
+        if not self.rear_gate_enabled or self._gate_anchor is None:
+            return
+        dx, dy = pose[0] - self._gate_anchor[0], pose[1] - self._gate_anchor[1]
+        if math.hypot(dx, dy) < self.rear_gate_step:
+            return
+        direction = math.atan2(dy, dx)
+        if math.cos(direction - self._gate_direction) <= 0.0:
+            return  # backing up or pushed back: keep the gate where it is
+        self._gate_anchor, self._gate_direction = pose[:2], direction
+        self.publish_rear_gate()
+
+    def publish_rear_gate(self):
+        if not self.rear_gate_enabled or self._map is None or self._gate_anchor is None:
+            return
+        info = self._map.info
+        grid = np.asarray(self._map.data, dtype=np.int16).reshape(info.height, info.width)
+        mask = np.zeros_like(grid, dtype=np.int8)
+        cells = rear_gate_cells(
+            grid, GridInfo(info.resolution, info.origin.position.x, info.origin.position.y),
+            self._gate_anchor, self._gate_direction, offset=self.rear_gate_offset,
+            max_half_width=self.settings.cut_half_width)
+        for row, col in cells:
+            mask[row, col] = 100
+        msg = OccupancyGrid()
+        msg.header.frame_id = self._map.header.frame_id or self.global_frame
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.info = info
+        msg.data = mask.ravel().tolist()
+        self._gate_pub.publish(msg)
 
     def watch_start_line(self):
         """Count forward crossings as laps; report reverse crossings (team rule, docs/06 section 4)."""
         pose = self.robot_pose()
         if pose is None or self._start_monitor is None:
             return
+        self.update_rear_gate(pose)
         crossing = self._start_monitor.update(pose[:2])
         if crossing > 0:
             self.laps_completed += 1
-            self.get_logger().info(f'Start line crossed forward: {self.laps_completed} lap(s) completed')
+            now = self.get_clock().now()
+            lap_time = '' if self._last_crossing is None else f' in {(now - self._last_crossing).nanoseconds * 1e-9:.1f} s'
+            self._last_crossing = now
+            self.get_logger().info(f'Start line crossed forward: {self.laps_completed} lap(s) completed{lap_time}')
         elif crossing < 0:
             self.reverse_crossings += 1
             self.get_logger().error(
@@ -222,7 +294,13 @@ def main():
                 x, y, _ = waypoints[0]
                 label = f'Exploration step to ({x:.2f}, {y:.2f})'
             patrol.get_logger().info(f'{label}: {len(waypoints)} waypoint(s)')
-            navigator.followWaypoints([to_pose(patrol.global_frame, *w) for w in waypoints])
+            poses = [to_pose(patrol.global_frame, *w) for w in waypoints]
+            if kind == 'loop':
+                # One continuous path through the whole lap; sending the next lap preempts this goal.
+                navigator.goThroughPoses(poses)
+            else:
+                navigator.goToPose(poses[0])
+            preempted = False
             while not navigator.isTaskComplete():
                 rclpy.spin_once(patrol, timeout_sec=0.05)
                 patrol.watch_start_line()
@@ -230,7 +308,13 @@ def main():
                     patrol.get_logger().warn(f'Race stopped during {label}; cancelling the goal')
                     navigator.cancelTask()
                     break
-            if not patrol.racing:
+                feedback = navigator.getFeedback()
+                if (kind == 'loop' and feedback is not None
+                        and 0 < feedback.number_of_poses_remaining <= patrol.preempt_poses_remaining):
+                    # Plan and send the next lap while still driving, so the robot never brakes for a lap end.
+                    preempted = True
+                    break
+            if not patrol.racing or preempted:
                 continue
 
             result = navigator.getResult()

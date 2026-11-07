@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="Fibonacci_arena">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry><mesh><uri>model://Fibonacci_arena/meshes/Part1.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+      </collision>
+      <visual name="visual">
+        <geometry><mesh><uri>model://Fibonacci_arena/meshes/Part1.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

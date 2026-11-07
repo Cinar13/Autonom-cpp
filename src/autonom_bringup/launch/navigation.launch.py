@@ -18,7 +18,10 @@ def _nav2_nodes(context):
     parameters.append({'use_sim_time': LaunchConfiguration('use_sim_time')})
     # The smoother's output is the robot's command only through the race start gate (autonom_race).
     smoothed = [('cmd_vel_smoothed', LaunchConfiguration('cmd_vel_out_topic'))]
-    bt_xml = {'default_nav_to_pose_bt_xml': LaunchConfiguration('nav_to_pose_bt_xml')}
+    bt_xml = {
+        'default_nav_to_pose_bt_xml': LaunchConfiguration('nav_to_pose_bt_xml'),
+        'default_nav_through_poses_bt_xml': LaunchConfiguration('nav_through_poses_bt_xml'),
+    }
 
     nav2_servers = [
         ('nav2_controller', 'controller_server', NAV_TO_SMOOTHER, {}),
@@ -28,6 +31,7 @@ def _nav2_nodes(context):
         ('nav2_velocity_smoother', 'velocity_smoother', NAV_TO_SMOOTHER + smoothed, {}),
         ('nav2_bt_navigator', 'bt_navigator', [], bt_xml),
         ('nav2_waypoint_follower', 'waypoint_follower', [], {}),
+        ('nav2_map_server', 'costmap_filter_info_server', [], {}),
     ]
     servers = [
         Node(
@@ -69,6 +73,11 @@ def generate_launch_description():
             'nav_to_pose_bt_xml',
             default_value=PathJoinSubstitution(
                 [FindPackageShare('autonom_bringup'), 'behavior_trees', 'navigate_to_pose_race.xml']),
-            description='Behavior tree for NavigateToPose (each loop waypoint)'),
+            description='Behavior tree for NavigateToPose (exploration steps)'),
+        DeclareLaunchArgument(
+            'nav_through_poses_bt_xml',
+            default_value=PathJoinSubstitution(
+                [FindPackageShare('autonom_bringup'), 'behavior_trees', 'navigate_through_poses_race.xml']),
+            description='Behavior tree for NavigateThroughPoses (one continuous lap)'),
         OpaqueFunction(function=_nav2_nodes),
     ])
