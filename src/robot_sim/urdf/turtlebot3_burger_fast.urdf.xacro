@@ -6,11 +6,18 @@
   <xacro:include filename="$(find turtlebot3_description)/urdf/turtlebot3_burger.urdf"/>
   <xacro:include filename="$(find autonom_description)/urdf/gz_plugins.xacro"/>
 
+  <!-- Gazebo DiffDrive limits; fibonacci_simulation.launch.py raises them for user-chosen speeds / accelerations. -->
+  <xacro:arg name="gz_max_velocity" default="0.65"/>
+  <xacro:arg name="gz_max_angular_velocity" default="4.0"/>
+  <xacro:arg name="gz_max_acceleration" default="1.0"/>
+
   <!-- Kinematics match turtlebot3_gazebo's burger model; Gazebo speed limits raised to the real robot's 0.6 m/s
        (a real Burger tops out at 0.22 m/s). Used by fibonacci_simulation.launch.py robot:=tb3_fast. -->
   <xacro:gz_diff_drive left_joint="wheel_left_joint" right_joint="wheel_right_joint"
                        wheel_separation="0.160" wheel_radius="0.033" base_frame="base_footprint"
-                       max_linear_velocity="0.65" max_angular_velocity="4.0"/>
+                       max_linear_velocity="$(arg gz_max_velocity)"
+                       max_angular_velocity="$(arg gz_max_angular_velocity)"
+                       max_linear_acceleration="$(arg gz_max_acceleration)"/>
   <xacro:gz_joint_state_publisher left_joint="wheel_left_joint" right_joint="wheel_right_joint"/>
   <xacro:gz_rplidar_s3 link="base_scan"/>
   <xacro:gz_imu link="imu_link" update_rate="200"/>

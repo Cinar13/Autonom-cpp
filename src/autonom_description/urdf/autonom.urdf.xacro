@@ -3,6 +3,11 @@
 
   <!-- sim:=true adds the Gazebo Harmonic systems so this model can replace the TurtleBot3 placeholder. -->
   <xacro:arg name="sim" default="false"/>
+  <!-- Gazebo DiffDrive limits (sim only). The motors allow 20 rad/s x 0.0325 m = 0.65 m/s, so the speed cap never
+       goes above that; fibonacci_simulation.launch.py may raise the turn rate and acceleration. -->
+  <xacro:arg name="gz_max_velocity" default="0.65"/>
+  <xacro:arg name="gz_max_angular_velocity" default="3.0"/>
+  <xacro:arg name="gz_max_acceleration" default="1.0"/>
 
   <!-- Keep wheel_radius / wheel_separation in sync with autonom_hardware/config/hardware.yaml. -->
   <xacro:property name="wheel_radius" value="0.0325"/>
@@ -20,9 +25,6 @@
   <xacro:property name="chassis_mass" value="1.2"/>
   <xacro:property name="wheel_mass" value="0.05"/>
   <xacro:property name="caster_mass" value="0.02"/>
-  <!-- Gazebo cap; the motors allow 20 rad/s x 0.0325 m = 0.65 m/s and the stack drives 0.6 m/s. -->
-  <xacro:property name="max_linear_velocity" value="0.65"/>
-  <xacro:property name="max_angular_velocity" value="3.0"/>
 
 
   <material name="chassis_grey"><color rgba="0.3 0.3 0.3 1.0"/></material>
@@ -130,8 +132,9 @@
     <xacro:include filename="$(find autonom_description)/urdf/gz_plugins.xacro"/>
     <xacro:gz_diff_drive left_joint="left_wheel_joint" right_joint="right_wheel_joint"
                          wheel_separation="${wheel_separation}" wheel_radius="${wheel_radius}"
-                         base_frame="base_footprint" max_linear_velocity="${max_linear_velocity}"
-                         max_angular_velocity="${max_angular_velocity}"/>
+                         base_frame="base_footprint" max_linear_velocity="$(arg gz_max_velocity)"
+                         max_angular_velocity="$(arg gz_max_angular_velocity)"
+                         max_linear_acceleration="$(arg gz_max_acceleration)"/>
     <xacro:gz_joint_state_publisher left_joint="left_wheel_joint" right_joint="right_wheel_joint"/>
     <xacro:gz_rplidar_s3 link="laser"/>
     <xacro:gz_imu link="imu_link" update_rate="100"/>

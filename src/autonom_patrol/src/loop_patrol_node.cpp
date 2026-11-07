@@ -9,6 +9,7 @@
 
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
+#include <rclcpp_action/exceptions.hpp>
 #include <tf2/exceptions.h>
 
 namespace autonom_patrol
@@ -121,7 +122,12 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
 
 LoopPatrolNode::~LoopPatrolNode()
 {
-  cancelGoal();
+  // Best effort on shutdown: a destructor must not throw (the context may already be shut down).
+  try {
+    cancelGoal();
+  } catch (const std::exception & e) {
+    RCLCPP_DEBUG(get_logger(), "Goal not cancelled on shutdown: %s", e.what());
+  }
 }
 
 bool LoopPatrolNode::racing() const
@@ -445,14 +451,22 @@ void LoopPatrolNode::watchActive()
 
 void LoopPatrolNode::cancelGoal()
 {
-  if (loop_handle_) {
-    loop_client_->async_cancel_goal(loop_handle_);
-    loop_handle_.reset();
+  // A goal that already finished is forgotten by the action client, which then throws UnknownGoalHandleError:
+  // nothing is left to cancel. Thrown from the destructor this aborted the patrol on every shutdown.
+  try {
+    if (loop_handle_) {
+      loop_client_->async_cancel_goal(loop_handle_);
+    }
+  } catch (const rclcpp_action::exceptions::UnknownGoalHandleError &) {
   }
-  if (explore_handle_) {
-    explore_client_->async_cancel_goal(explore_handle_);
-    explore_handle_.reset();
+  try {
+    if (explore_handle_) {
+      explore_client_->async_cancel_goal(explore_handle_);
+    }
+  } catch (const rclcpp_action::exceptions::UnknownGoalHandleError &) {
   }
+  loop_handle_.reset();
+  explore_handle_.reset();
   ++goal_seq_;  // ignore results of the cancelled goal
 }
 

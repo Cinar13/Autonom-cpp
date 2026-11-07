@@ -52,9 +52,13 @@ def generate_launch_description():
     }
 
     robot_description = ParameterValue(
-        Command(['xacro ', LaunchConfiguration('robot_urdf'), ' sim:=true']), value_type=str)
+        Command(['xacro ', LaunchConfiguration('robot_urdf'), ' sim:=true ', LaunchConfiguration('robot_xacro_args')]),
+        value_type=str)
 
     arguments = [
+        DeclareLaunchArgument(
+            'robot_xacro_args', default_value='',
+            description='Extra xacro arguments for robot_urdf, e.g. "gz_max_velocity:=1.0" (Gazebo DiffDrive limits)'),
         DeclareLaunchArgument(
             'robot_urdf',
             default_value=os.path.join(sim_share, 'urdf', 'turtlebot3_burger_sim.urdf.xacro'),
