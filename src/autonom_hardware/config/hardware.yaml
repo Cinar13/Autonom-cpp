@@ -1,0 +1,59 @@
+# Pin numbers are RP1 GPIO line offsets (BCM numbering on the 40-pin header).
+# Hardware PWM on RPi 5 needs /boot/firmware/config.txt: dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
+# (GPIO12 -> PWM0 channel 0, GPIO13 -> PWM0 channel 1). Check `ls /sys/class/pwm` for the chip index.
+
+/**:
+  ros__parameters:
+    gpio_chip: "pinctrl-rp1"
+    wheel_radius: 0.0325
+    wheel_separation: 0.17
+    left_joint_name: "left_wheel_joint"
+    right_joint_name: "right_wheel_joint"
+
+motor_driver:
+  ros__parameters:
+    control_frequency_hz: 50.0
+    max_wheel_speed: 20.0
+    stop_velocity_threshold: 0.05
+    cmd_vel_timeout: 0.5
+    feedback_timeout: 0.25
+    left_motor:
+      pwm_chip: "/sys/class/pwm/pwmchip0"
+      pwm_channel: 0
+      direction_pin: 5
+      pwm_frequency_hz: 20000.0
+      inverted: false
+    right_motor:
+      pwm_chip: "/sys/class/pwm/pwmchip0"
+      pwm_channel: 1
+      direction_pin: 6
+      pwm_frequency_hz: 20000.0
+      inverted: true
+    pid:
+      kp: 0.04
+      ki: 0.4
+      kd: 0.0
+      kf: 0.045
+      integral_limit: 0.5
+      output_limit: 1.0
+
+wheel_odometry:
+  ros__parameters:
+    ticks_per_revolution: 1320
+    publish_frequency_hz: 50.0
+    publish_tf: false
+    odom_frame_id: "odom"
+    base_frame_id: "base_footprint"
+    left_encoder:
+      pin_a: 17
+      pin_b: 27
+      inverted: false
+      pull_up: true
+    right_encoder:
+      pin_a: 23
+      pin_b: 24
+      inverted: true
+      pull_up: true
+    pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e6, 1.0e6, 1.0e6, 1.0e-2]
+    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e6, 1.0e6, 1.0e6, 2.0e-2]
+

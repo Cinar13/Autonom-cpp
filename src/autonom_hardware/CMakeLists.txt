@@ -1,0 +1,75 @@
+cmake_minimum_required(VERSION 3.16)
+project(autonom_hardware LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion)
+
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GPIOD REQUIRED IMPORTED_TARGET libgpiod>=1.6)
+if(GPIOD_VERSION VERSION_GREATER_EQUAL 2.0)
+  message(FATAL_ERROR "libgpiod ${GPIOD_VERSION} found; this package targets the v1.6 API shipped with Ubuntu 24.04")
+endif()
+
+add_library(${PROJECT_NAME}_core SHARED
+  src/gpio.cpp
+  src/pwm_channel.cpp
+  src/a4950_motor.cpp
+  src/quadrature_encoder.cpp
+  src/pid_controller.cpp
+  src/diff_drive_kinematics.cpp
+)
+target_include_directories(${PROJECT_NAME}_core PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+target_link_libraries(${PROJECT_NAME}_core PUBLIC PkgConfig::GPIOD pthread)
+
+add_library(${PROJECT_NAME}_nodes SHARED
+  src/motor_driver_node.cpp
+  src/wheel_odometry_node.cpp
+)
+target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
+  ${PROJECT_NAME}_core
+  rclcpp::rclcpp
+  rclcpp_components::component
+  ${geometry_msgs_TARGETS}
+  ${nav_msgs_TARGETS}
+  ${sensor_msgs_TARGETS}
+  tf2_ros::tf2_ros
+)
+
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::MotorDriverNode"
+  EXECUTABLE motor_driver_node
+)
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::WheelOdometryNode"
+  EXECUTABLE wheel_odometry_node
+)
+
+install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_diff_drive_kinematics test/test_diff_drive_kinematics.cpp)
+  target_link_libraries(test_diff_drive_kinematics ${PROJECT_NAME}_core)
+  ament_add_gtest(test_pid_controller test/test_pid_controller.cpp)
+  target_link_libraries(test_pid_controller ${PROJECT_NAME}_core)
+endif()
+
+ament_package()

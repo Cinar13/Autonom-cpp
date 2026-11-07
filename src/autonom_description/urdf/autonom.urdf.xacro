@@ -1,0 +1,140 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="autonom">
+
+  <!-- sim:=true adds the Gazebo Harmonic systems so this model can replace the TurtleBot3 placeholder. -->
+  <xacro:arg name="sim" default="false"/>
+
+  <!-- Keep wheel_radius / wheel_separation in sync with autonom_hardware/config/hardware.yaml. -->
+  <xacro:property name="wheel_radius" value="0.0325"/>
+  <xacro:property name="wheel_separation" value="0.17"/>
+  <xacro:property name="wheel_width" value="0.026"/>
+  <xacro:property name="chassis_length" value="0.22"/>
+  <xacro:property name="chassis_width" value="0.20"/>
+  <xacro:property name="chassis_height" value="0.06"/>
+  <xacro:property name="chassis_offset_x" value="-0.04"/>
+  <xacro:property name="laser_x" value="0.0"/>
+  <xacro:property name="laser_z" value="0.11"/>
+  <xacro:property name="laser_yaw" value="0.0"/>
+  <xacro:property name="imu_x" value="0.0"/>
+  <xacro:property name="imu_z" value="0.05"/>
+  <xacro:property name="chassis_mass" value="1.2"/>
+  <xacro:property name="wheel_mass" value="0.05"/>
+  <xacro:property name="caster_mass" value="0.02"/>
+  <xacro:property name="max_linear_velocity" value="0.5"/>
+  <xacro:property name="max_angular_velocity" value="3.0"/>
+
+
+  <material name="chassis_grey"><color rgba="0.3 0.3 0.3 1.0"/></material>
+  <material name="wheel_black"><color rgba="0.05 0.05 0.05 1.0"/></material>
+  <material name="lidar_blue"><color rgba="0.1 0.3 0.8 1.0"/></material>
+
+  <link name="base_footprint"/>
+
+  <link name="base_link">
+    <visual>
+      <origin xyz="${chassis_offset_x} 0 ${chassis_height / 2}"/>
+      <geometry><box size="${chassis_length} ${chassis_width} ${chassis_height}"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+    <collision>
+      <origin xyz="${chassis_offset_x} 0 ${chassis_height / 2}"/>
+      <geometry><box size="${chassis_length} ${chassis_width} ${chassis_height}"/></geometry>
+    </collision>
+    <inertial>
+      <origin xyz="${chassis_offset_x} 0 ${chassis_height / 2}"/>
+      <mass value="${chassis_mass}"/>
+      <inertia ixx="${chassis_mass * (chassis_width ** 2 + chassis_height ** 2) / 12}" ixy="0" ixz="0"
+               iyy="${chassis_mass * (chassis_length ** 2 + chassis_height ** 2) / 12}" iyz="0"
+               izz="${chassis_mass * (chassis_length ** 2 + chassis_width ** 2) / 12}"/>
+    </inertial>
+  </link>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}"/>
+  </joint>
+
+  <xacro:macro name="drive_wheel" params="side y_sign">
+    <link name="${side}_wheel_link">
+      <visual>
+        <origin rpy="${pi / 2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="wheel_black"/>
+      </visual>
+      <collision>
+        <origin rpy="${pi / 2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <inertial>
+        <origin rpy="${pi / 2} 0 0"/>
+        <mass value="${wheel_mass}"/>
+        <inertia ixx="${wheel_mass * (3 * wheel_radius ** 2 + wheel_width ** 2) / 12}" ixy="0" ixz="0"
+                 iyy="${wheel_mass * (3 * wheel_radius ** 2 + wheel_width ** 2) / 12}" iyz="0"
+                 izz="${wheel_mass * wheel_radius ** 2 / 2}"/>
+      </inertial>
+    </link>
+    <joint name="${side}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${side}_wheel_link"/>
+      <origin xyz="0 ${y_sign * wheel_separation / 2} 0"/>
+      <axis xyz="0 1 0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:drive_wheel side="left" y_sign="1"/>
+  <xacro:drive_wheel side="right" y_sign="-1"/>
+
+  <link name="caster_link">
+    <visual>
+      <geometry><sphere radius="${wheel_radius / 2}"/></geometry>
+      <material name="wheel_black"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="${wheel_radius / 2}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="${caster_mass}"/>
+      <inertia ixx="${2 * caster_mass * (wheel_radius / 2) ** 2 / 5}" ixy="0" ixz="0"
+               iyy="${2 * caster_mass * (wheel_radius / 2) ** 2 / 5}" iyz="0"
+               izz="${2 * caster_mass * (wheel_radius / 2) ** 2 / 5}"/>
+    </inertial>
+  </link>
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="caster_link"/>
+    <origin xyz="${chassis_offset_x - chassis_length / 2 + wheel_radius} 0 ${-wheel_radius / 2}"/>
+  </joint>
+
+  <link name="laser">
+    <visual>
+      <geometry><cylinder radius="0.035" length="0.04"/></geometry>
+      <material name="lidar_blue"/>
+    </visual>
+  </link>
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser"/>
+    <origin xyz="${laser_x} 0 ${laser_z}" rpy="0 0 ${laser_yaw}"/>
+  </joint>
+
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="${imu_x} 0 ${imu_z}"/>
+  </joint>
+
+  <xacro:if value="$(arg sim)">
+    <xacro:include filename="$(find autonom_description)/urdf/gz_plugins.xacro"/>
+    <xacro:gz_diff_drive left_joint="left_wheel_joint" right_joint="right_wheel_joint"
+                         wheel_separation="${wheel_separation}" wheel_radius="${wheel_radius}"
+                         base_frame="base_footprint" max_linear_velocity="${max_linear_velocity}"
+                         max_angular_velocity="${max_angular_velocity}"/>
+    <xacro:gz_joint_state_publisher left_joint="left_wheel_joint" right_joint="right_wheel_joint"/>
+    <xacro:gz_rplidar_s3 link="laser"/>
+    <xacro:gz_imu link="imu_link" update_rate="100"/>
+    <xacro:gz_frictionless link="caster_link"/>
+  </xacro:if>
+
+</robot>
