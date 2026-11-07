@@ -43,6 +43,28 @@ Robot: TurtleBot3 body with Gazebo limits raised to the real robot's 0.6 m/s, on
 | Odometry drift at speed | wheel slip | gyro + rf2o fused |
 | Patrol never sent goals | `waitUntilNav2Active` without timeout | own wait with retries |
 
+## CPU and memory (robot side)
+
+Measured on the development laptop (Intel i7-12650H, 16 threads) during 60 s of racing on the arena, Gazebo,
+RViz, the ros_gz bridge and the sim-only wheel relay excluded. 100 % = one core; USS = memory unique to the process.
+
+| Process | CPU avg | CPU peak | RAM (USS) |
+|---|---|---|---|
+| slam_toolbox | 125 % | 306 % | 117 MB |
+| loop_patrol (Python) | 64 % | 68 % | 85 MB |
+| rf2o_laser_odometry | 24 % | 26 % | 21 MB |
+| bt_navigator | 17 % | 18 % | 48 MB |
+| planner_server | 15 % | 16 % | 28 MB |
+| controller_server | 14 % | 16 % | 27 MB |
+| ekf_filter_node | 11 % | 13 % | 20 MB |
+| behavior_server | 11 % | 13 % | 21 MB |
+| 11 small nodes together | 68 % | | 219 MB |
+| **Total (19 processes)** | **~346 %** | | **~590 MB** |
+
+In simulation every node also handles `/clock` at 1 kHz (~5 % each, ~0.9 core in total); that load does not exist
+on the robot. Scaled to the Raspberry Pi 5 (4 cores, roughly 2–2.5× slower per core) the remaining ~2.5 laptop
+cores would still exceed the Pi: slam_toolbox and the Python loop patrol are the two big consumers.
+
 ## To do
 
 Ordered by expected effect on the score.
@@ -62,3 +84,8 @@ Ordered by expected effect on the score.
 7. **Start signal driver**: button / RC5 IR publishing `/race/start_signal` (pin not in `docs/01`).
 8. **Official rule numbers** for the team rule "no reverse crossing of the start" (`docs/06` §4).
 9. CPU check on the Raspberry Pi 5 with rf2o, gyro, SLAM and Nav2 all running at race speed.
+10. **Port the loop patrol to C++** (64 % of a core in Python): planner and node, gtest ports of the planner tests.
+    In progress on branch `optimised`.
+11. **Reduce slam_toolbox CPU** (125 % avg, 306 % peak): feed it a decimated scan (as rf2o already gets) and
+    re-check the arena map; consider `throttle_scans` / `minimum_time_interval`.
+12. Re-measure CPU and RAM after 10 and 11, without the 1 kHz `/clock` overhead (real-time run or on the Pi).
