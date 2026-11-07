@@ -85,7 +85,11 @@ std::vector<int> drivingDistance(const Mask & passable, int width, int height, C
 std::vector<double> distanceTransform(const Mask & free, int width, int height);
 
 /// Nearest cell of `mask` to `p` (cell centres, squared distance, first in row-major order on ties).
-std::optional<Cell> nearestCell(const Mask & mask, const Grid & grid, Point p);
+/// With `ahead_of` (a heading), cells behind `p` are only used when no cell lies ahead: when the robot's own cell
+/// is not safe (e.g. rival robots beside it on the start line), the search seed must not land in the small pocket
+/// in front of the rear gate.
+std::optional<Cell> nearestCell(
+  const Mask & mask, const Grid & grid, Point p, std::optional<double> ahead_of = std::nullopt);
 
 struct Gate
 {

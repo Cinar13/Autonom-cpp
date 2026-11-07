@@ -250,6 +250,36 @@ TEST(TrackPlanner, ExplorationGoalPrefersCellsAheadOfRobot)
   EXPECT_GT(facing_corner->x, 1.0);
 }
 
+TEST(TrackPlanner, RivalsBesideTheStartDoNotTrapTheRobot)
+{
+  // Start line with a rival robot on each side (docs/07): the clearance around them leaves a band of unsafe cells
+  // across the 0.6 m corridor through the robot's own cell. The nearest safe cell overall lies behind the robot,
+  // in the pocket in front of the rear gate; the search must start from the cells ahead instead.
+  Grid g = makeGrid(200, 200, -1);
+  fill(g, 94, 106, 40, 160, 0);     // corridor y -0.3..0.3, x -3..3
+  fill(g, 93, 94, 40, 160, 100);
+  fill(g, 106, 107, 40, 160, 100);
+  fill(g, 103, 105, 99, 102, 100);  // left rival, y 0.15..0.25
+  fill(g, 95, 97, 99, 102, 100);    // right rival, y -0.25..-0.15
+  LoopSettings s;
+  s.clearance = 0.12;
+  s.cut_offset = 0.25;
+  s.cut_half_width = 0.6;
+  s.max_exploration_distance = 0.6;
+  const Point robot{0.0, 0.0};
+  const Mask safe = safeFreeSpace(g, 3, s.free_threshold);
+  ASSERT_FALSE(safe[g.index(g.cellOf(robot).row, g.cellOf(robot).col)]);
+  const auto any = nearestCell(safe, g, robot);
+  ASSERT_TRUE(any);
+  EXPECT_LT(g.centre(any->row, any->col).x, 0.0);  // the trap: nearest safe cell is behind
+  const auto ahead = nearestCell(safe, g, robot, 0.0);
+  ASSERT_TRUE(ahead);
+  EXPECT_GT(g.centre(ahead->row, ahead->col).x, 0.0);
+  const auto goal = planExplorationGoal(g, robot, s, 0.0);
+  ASSERT_TRUE(goal);
+  EXPECT_GT(goal->x, 0.3);
+}
+
 TEST(TrackPlanner, ExplorationDistanceCap)
 {
   Grid g = makeGrid(200, 200, -1);

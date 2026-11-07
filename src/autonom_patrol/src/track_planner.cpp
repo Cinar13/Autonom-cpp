@@ -190,25 +190,35 @@ std::vector<double> distanceTransform(const Mask & free, int width, int height)
   return squared;
 }
 
-std::optional<Cell> nearestCell(const Mask & mask, const Grid & grid, Point p)
+std::optional<Cell> nearestCell(const Mask & mask, const Grid & grid, Point p, std::optional<double> ahead_of)
 {
   const double robot_col = (p.x - grid.origin_x) / grid.resolution - 0.5;
   const double robot_row = (p.y - grid.origin_y) / grid.resolution - 0.5;
+  const double cos_h = ahead_of ? std::cos(*ahead_of) : 0.0;
+  const double sin_h = ahead_of ? std::sin(*ahead_of) : 0.0;
   std::optional<Cell> best;
+  std::optional<Cell> best_ahead;
   double best_distance = std::numeric_limits<double>::infinity();
+  double best_ahead_distance = std::numeric_limits<double>::infinity();
   for (int row = 0; row < grid.height; ++row) {
     for (int col = 0; col < grid.width; ++col) {
       if (!mask[grid.index(row, col)]) {
         continue;
       }
-      const double d = (row - robot_row) * (row - robot_row) + (col - robot_col) * (col - robot_col);
+      const double dr = row - robot_row;
+      const double dc = col - robot_col;
+      const double d = dr * dr + dc * dc;
       if (d < best_distance) {
         best_distance = d;
         best = Cell{row, col};
       }
+      if (ahead_of && dc * cos_h + dr * sin_h >= 0.0 && d < best_ahead_distance) {
+        best_ahead_distance = d;
+        best_ahead = Cell{row, col};
+      }
     }
   }
-  return best;
+  return best_ahead ? best_ahead : best;
 }
 
 Gate rearGate(const Grid & grid, Point xy, double direction, double offset, double max_half_width, int occupied_threshold)
@@ -262,7 +272,7 @@ std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, c
   for (const auto & cell : cut.cells) {
     passable[grid.index(cell.row, cell.col)] = 0;
   }
-  const auto seed = nearestCell(passable, grid, robot);
+  const auto seed = nearestCell(passable, grid, robot, heading);
   if (!seed) {
     return {};
   }
@@ -326,7 +336,7 @@ std::optional<Waypoint> planExplorationGoal(
       safe[grid.index(cell.row, cell.col)] = 0;
     }
   }
-  const auto seed = nearestCell(safe, grid, robot);
+  const auto seed = nearestCell(safe, grid, robot, heading);
   if (!seed) {
     return std::nullopt;
   }
