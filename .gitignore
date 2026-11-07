@@ -4,4 +4,4 @@ log/
 __pycache__/
 *.pyc
 *:Zone.Identifier
-
+agent_prompt.txt
