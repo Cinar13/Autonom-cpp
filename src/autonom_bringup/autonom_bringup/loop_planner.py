@@ -3,7 +3,9 @@
 The explored region is split into equal angular sectors around its centroid; in each sector the
 reachable cell farthest from the centroid (while keeping `clearance` from obstacles and unknown
 space) becomes a waypoint. As slam_toolbox expands the map, successive laps grow outward.
-While the explored area is too small for a loop, `plan_exploration_goal` pushes the map frontier out.
+A loop is only returned once every sector holds a waypoint, i.e. the explored space surrounds the centroid
+(a closed track); on a partial map such as one L-shaped corridor a "loop" would need U-turns in the corridor.
+Until then `plan_exploration_goal` pushes the map frontier out ahead of the robot.
 """
 
 from dataclasses import dataclass
@@ -29,6 +31,7 @@ class LoopSettings:
     max_radius: float = 0.0
     min_spacing: float = 0.5
     free_threshold: int = 25
+    clockwise: bool = False
 
 
 def _dilate(mask: np.ndarray, iterations: int, border: bool) -> np.ndarray:
@@ -83,12 +86,16 @@ def plan_loop(
     for sector in range(settings.waypoint_count):
         sector_radii = np.where(sectors == sector, radii, -1.0)
         best = int(np.argmax(sector_radii))
-        if sector_radii[best] >= 0.0:
-            points.append((float(xs[best]), float(ys[best])))
+        if sector_radii[best] < 0.0:
+            return []
+        points.append((float(xs[best]), float(ys[best])))
 
     points = _enforce_spacing(points, settings.min_spacing)
     if len(points) < 3:
         return []
+    # Sectors run counter-clockwise around the centroid; laps only score in the designated direction (AC-5.1).
+    if settings.clockwise:
+        points.reverse()
 
     start = min(range(len(points)), key=lambda i: math.dist(points[i], robot_xy))
     points = points[start:] + points[:start]
@@ -99,17 +106,24 @@ def plan_loop(
 
 
 def plan_exploration_goal(
-    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
+    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings,
+    heading: Optional[float] = None,
 ) -> Optional[Waypoint]:
     """Farthest reachable safe cell from the robot, facing away from it; None if nothing is `min_spacing` away.
 
     Safe cells keep `clearance` from unknown space, so the farthest one sits just inside the map frontier.
+    With `heading` (robot yaw), cells in front of the robot are preferred so it keeps driving forward along
+    the track instead of turning back in a corridor; cells behind are used only when nothing ahead qualifies.
     """
     reachable = _reachable_points(grid, info, robot_xy, settings)
     if reachable is None:
         return None
     xs, ys = reachable
     distances = np.hypot(xs - robot_xy[0], ys - robot_xy[1])
+    if heading is not None:
+        ahead = (xs - robot_xy[0]) * math.cos(heading) + (ys - robot_xy[1]) * math.sin(heading) > 0.0
+        if np.any(ahead & (distances >= settings.min_spacing)):
+            distances = np.where(ahead, distances, -1.0)
     best = int(np.argmax(distances))
     if distances[best] < settings.min_spacing:
         return None

@@ -19,10 +19,11 @@ Nothing here has run on real hardware. The simulation has run, but a full lap wa
 | Package | What it is |
 |---|---|
 | `autonom_hardware` | C++ components `MotorDriverNode`, `WheelOdometryNode`; RAII GPIO (libgpiod **1.6** API), sysfs PWM, PID, kinematics; 12 gtests |
-| `autonom_localization` | C++ components `OdometryCovarianceRelay` (adds covariance to rf2o and Gazebo odometry), `ScanDecimator` (every Nth beam for rf2o) |
+| `autonom_localization` | C++ components `OdometryCovarianceRelay` (adds covariance to rf2o and Gazebo odometry), `ScanDecimator` (every Nth beam for rf2o), `ScanSpeckleFilter` (drops isolated returns before the costmaps) |
 | `autonom_description` | Custom robot URDF (`autonom.urdf.xacro`, `sim:=true` adds Gazebo plugins) + `gz_plugins.xacro` macros, incl. `gz_rplidar_s3` |
 | `autonom_bringup` | `bringup` = `hardware` + `autonomy` launches; EKF / SLAM / Nav2 / CycloneDDS / RViz config; `loop_patrol.py` + `loop_planner.py` (7 pytest tests) |
 | `robot_sim` | `tb3_simulation.launch.py`, `circuit2_harmonic.sdf`, `bridge.yaml`, `nav2_sim.yaml`, vendored `Circuit_ql_2` model |
+| `autonom_race` | C++ `RaceStartGateNode` + ROS-free `StartGate` state machine (IDLE → COUNTDOWN → RACING / STOPPED); 7 gtests |
 | `turtlebot3_description` | Vendored Burger-only copy (ROBOTIS jazzy `0c0be84`, Apache-2.0) |
 | `rf2o_laser_odometry`, `sllidar_ros2` | Git submodules, unmodified |
 
@@ -33,8 +34,23 @@ real: encoders -> wheel_odometry -> /wheel/odom                                 
 sim:  Gazebo /odom -> covariance relay -> /wheel/odom ---------------------------------------------- +--> EKF -> /odometry/filtered
                         [use_imu]  BNO055 or Gazebo IMU -> /imu/data ------------------------------------+    + TF odom->base_footprint
 /scan -> slam_toolbox -> /map + TF map->odom -> Nav2 <- loop_patrol
-Nav2 -> /cmd_vel -> motor_driver (real) or Gazebo DiffDrive (sim)
+/scan -> scan_speckle_filter -> /scan_filtered -> Nav2 costmaps
+Nav2 -> /cmd_vel_smoothed -> race_start_gate -> /cmd_vel -> motor_driver (real) or Gazebo DiffDrive (sim)
+race_start_gate -> /race/state (latched) -> loop_patrol sends goals only while RACING
 ```
+
+### Competition rules (docs/06) — added 2026-11-07 on native Ubuntu
+| Rule | Implementation |
+|---|---|
+| 5 s start delay (AC-3.2, AC-4.5) | `race_start_gate`: start via `/race/start_signal` (std_msgs/Empty, for a button / RC5 IR driver) or `ros2 service call /race/start std_srvs/srv/Trigger`; stop via `/race/stop_signal` or `/race/stop`. Holds zero twists until `start_delay` (5.0 s, node clock) has elapsed; repeated starts are ignored; a start before `/clock` runs is rejected. `auto_start:=true` (sim default) starts on launch; the real robot defaults to `false`. |
+| No Nav2 goals before the delay | `loop_patrol` waits for `/race/state == RACING` and cancels its goal when the state leaves RACING. |
+| Wall contact ≤ 3 s, no ramming (AC-3.5, AC-4.8) | `nav2.yaml`: `PoseProgressChecker` 2 s / 0.10 m / 0.35 rad; inflation = robot_radius + 20 mm (user decision; plans may pass near walls), `cost_scaling_factor` 3.0; RPP cost-regulated slow-down near obstacles. `behavior_trees/navigate_to_pose_race.xml`: recovery = clear local costmap + back up 0.15 m, then clear costmaps, then wait 1 s; no Spin. |
+| No U-turns in corridors | `loop_planner.plan_loop` returns a loop only when every sector around the centroid has a waypoint (closed track mapped); until then exploration goals are chosen ahead of the robot's heading. Before this, a "loop" over a partial (L-shaped) map put the next waypoint behind the robot, and RPP's rotate-to-heading oscillated around ±π: the cause of the endless `Failed to make progress` in open issue 1. |
+| Robot stalled in turns ("can't take corners") | Cause, verified in sim: RPP compares the *carrot* distance with `xy_goal_tolerance` (0.25). A slow robot clamps the carrot to `min_lookahead_dist` (was 0.25) and the interpolated carrot sat at 0.2499..., which latched (`stateful: true`) rotate-to-goal-heading with vx = 0 while the goal was metres away. Fix: `min_lookahead_dist: 0.35` (must stay > `xy_goal_tolerance`). Measured live: rotate-to-heading 363/366 commands → 0/446, mean speed 0.19 m/s, first corner taken. |
+| Single LiDAR points became lethal obstacles | `autonom_localization/ScanSpeckleFilter`: `/scan` → `/scan_filtered` (returns with < 2 neighbours within ±3 beams at a similar range become +inf); both costmap obstacle layers use `/scan_filtered`, slam_toolbox keeps `/scan`. 5 gtests. |
+| Laps in the designated direction (AC-5.1) | `loop_patrol.direction`: `counterclockwise` (default) or `clockwise`. Set it to the referee's direction before each round. |
+
+Missing: a driver for the physical start button / RC5 IR receiver. It only has to publish `std_msgs/Empty` on `/race/start_signal` (and `/race/stop_signal`); pin and receiver are not in `docs/01`.
 
 ---
 
@@ -78,6 +94,7 @@ ros2 launch robot_sim tb3_simulation.launch.py          # Gazebo GUI + RViz, Tur
 | 5 | SLAM + Nav2 up | `ros2 lifecycle get /slam_toolbox` and `/bt_navigator` | both `active` |
 | 6 | Patrol drives | launch log: `Lap 1: N waypoint(s)` then `Goal succeeded` | robot moves along the track |
 | 7 | **A full lap succeeds (never observed yet)** | launch log: `Lap 2:` appears, no `Lap 1 ended with FAILED` | — |
+| 7a | Start delay holds | launch log: `race_start_gate`: `Start (auto_start)`, then `COUNTDOWN -> RACING` ≥ 5 s later; `ros2 topic echo /race/state` | robot does not move before RACING |
 | 8 | Rendering is correct | look at Gazebo + RViz | walls, robot mesh, scan, map all visible, no flicker (the WSL session saw a rendering issue; cause unknown) |
 
 Then the variants:

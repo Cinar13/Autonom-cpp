@@ -65,3 +65,35 @@ def test_exploration_goal_none_when_nothing_is_far_enough():
     grid = np.full((200, 200), -1, dtype=np.int16)
     grid[98:103, 98:103] = 0
     assert plan_exploration_goal(grid, INFO, (0.0, 0.0), LoopSettings(clearance=0.05, min_spacing=1.0)) is None
+
+
+def _signed_area(waypoints):
+    points = [(x, y) for x, y, _ in waypoints]
+    return 0.5 * sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]))
+
+
+def test_loop_direction_follows_setting():
+    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=False))
+    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True))
+    assert _signed_area(ccw) > 0.0
+    assert _signed_area(cw) < 0.0
+    assert cw[0][:2] == ccw[0][:2]
+
+
+def _l_corridor():
+    grid = np.full((200, 200), -1, dtype=np.int16)
+    grid[90:110, 40:160] = 0
+    grid[90:180, 140:160] = 0
+    return grid
+
+
+def test_partial_map_is_not_a_loop():
+    assert plan_loop(_l_corridor(), INFO, (-2.5, 0.0), LoopSettings(clearance=0.2)) == []
+
+
+def test_exploration_goal_prefers_cells_ahead_of_robot():
+    settings = LoopSettings(clearance=0.2)
+    facing_back = plan_exploration_goal(_l_corridor(), INFO, (1.0, 0.0), settings, heading=math.pi)
+    assert facing_back is not None and facing_back[0] < 0.0
+    facing_corner = plan_exploration_goal(_l_corridor(), INFO, (1.0, 0.0), settings, heading=0.0)
+    assert facing_corner is not None and facing_corner[0] > 1.0

@@ -1,6 +1,7 @@
 """Robot-agnostic autonomy pipeline shared by the real robot and Gazebo.
 
 /wheel/odom -> EKF (+ optional rf2o laser odometry and /imu/data) -> slam_toolbox -> Nav2 -> loop patrol.
+Nav2 -> /cmd_vel_smoothed -> race start gate -> /cmd_vel: nothing moves until 5 s after the start signal (AC-3.2).
 Expects /scan, /wheel/odom, /tf_static and (when use_imu) /imu/data from the robot or simulator.
 """
 
@@ -66,6 +67,15 @@ def _pipeline(context):
         output='screen',
     )
 
+    speckle_filter = Node(
+        package='autonom_localization',
+        executable='scan_speckle_filter',
+        name='scan_speckle_filter',
+        parameters=[sim_time],
+        remappings=[('scan_in', '/scan'), ('scan_out', '/scan_filtered')],
+        output='screen',
+    )
+
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare('autonom_bringup'), 'launch', 'localization.launch.py'])),
@@ -99,8 +109,24 @@ def _pipeline(context):
         actions=[IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([FindPackageShare('autonom_bringup'), 'launch', 'navigation.launch.py'])),
-            launch_arguments={'use_sim_time': use_sim_time, 'params_overlay': nav2_overlay}.items(),
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+                'params_overlay': nav2_overlay,
+                'cmd_vel_out_topic': '/cmd_vel_smoothed',
+            }.items(),
         )],
+    )
+
+    start_gate = Node(
+        package='autonom_race',
+        executable='race_start_gate',
+        name='race_start_gate',
+        parameters=[{
+            'start_delay': LaunchConfiguration('start_delay'),
+            'auto_start': LaunchConfiguration('auto_start'),
+        }, sim_time],
+        remappings=[('cmd_vel_in', '/cmd_vel_smoothed'), ('cmd_vel_out', '/cmd_vel')],
+        output='screen',
     )
 
     loop_patrol = Node(
@@ -111,7 +137,7 @@ def _pipeline(context):
         output='screen',
     )
 
-    return [scan_decimator, laser_odometry, rf2o_relay, localization, slam_activate, slam, slam_configure, navigation, loop_patrol]
+    return [speckle_filter, scan_decimator, laser_odometry, rf2o_relay, localization, slam_activate, slam, slam_configure, start_gate, navigation, loop_patrol]
 
 
 def generate_launch_description():
@@ -122,6 +148,12 @@ def generate_launch_description():
         DeclareLaunchArgument('use_imu', default_value='false', description='Fuse /imu/data in the EKF'),
         DeclareLaunchArgument(
             'autonomous_loop', default_value='true', description='Run the loop patrol once Nav2 and the map are up'),
+        DeclareLaunchArgument(
+            'start_delay', default_value='5.0',
+            description='Seconds between the start signal and the first motion (competition rule AC-3.2: 5.0)'),
+        DeclareLaunchArgument(
+            'auto_start', default_value='false',
+            description='Start the race on launch instead of waiting for /race/start_signal or /race/start'),
         DeclareLaunchArgument(
             'nav2_startup_delay', default_value='5.0',
             description='Seconds to wait for TF (map->odom->base) before starting Nav2'),
