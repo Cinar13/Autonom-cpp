@@ -1,11 +1,12 @@
-# Overlay for ekf.yaml, loaded only when use_rf2o:=true: rf2o laser odometry twist.
+# Overlay for ekf.yaml, loaded only when use_rf2o:=true: rf2o laser odometry, forward velocity only.
+# rf2o's yaw rate is not fused (user decision): heading comes from the gyro and the wheels.
 ekf_filter_node:
   ros__parameters:
     odom1: /rf2o/odom
     odom1_config: [false, false, false,
                    false, false, false,
                    true,  false, false,
-                   false, false, true,
+                   false, false, false,
                    false, false, false]
     odom1_queue_size: 10
     odom1_differential: false
