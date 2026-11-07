@@ -63,13 +63,12 @@ race_start_gate -> /race/state (latched) -> loop_patrol sends goals only while R
 | Arena sims fuse gyro + rf2o by default | `fibonacci_simulation.launch.py` now defaults to `use_imu:=true use_rf2o:=true`. 3-minute race, `robot:=tb3_fast`: odometry error mean 0.06 m / max 0.17 m (wheels only at 0.6 m/s: up to 0.35 m / 1 rad), 5 laps (16.7, 16.1, 69.0, 20.2 s), 21 collision stalls (was 177). The 69 s lap was SLAM losing consistency; under investigation. |
 | SLAM pose drift on the arena (fixed) | Cause: slam_toolbox `occupancy_threshold` 0.4 (set for faster obstacle clearing) erased the arena's 18 mm inner walls, leaving only the near-symmetric outer box to match; back at 0.1 the map keeps the U and divider and scan, map and ground truth line up. Earlier measurements, all taken at 0.4: EKF odometry stays within ~0.1 m over 3 min, but the slam_toolbox pose drifts 0.3–0.7 m within a lap and snaps back at loop closures (no correlation with turning). Tighter scan matching and a 0.025 m map both made it worse and were reverted. A prebuilt map is not allowed (docs/06: slam_toolbox must map). The robot still drives the arena correctly; at 0.6 m/s watch for the lap waypoint count shrinking (map drift). |
 | Laps in the designated direction (AC-5.1) | `loop_patrol.direction`: `counterclockwise` (default) or `clockwise`. Set it to the referee's direction before each round. |
+| Map slowly, race fast | `loop_patrol` sets RPP `FollowPath.desired_linear_vel` live: `exploration_speed` 0.3 m/s while mapping, `race_speed` 0.6 m/s once the lap is found (TurtleBot3 overlays: 0.22 / 0.22). At full speed the mapping lap overshot hairpins into corner pockets and got stuck. |
+| Rear gate follows forward travel | The gate advances when the displacement agrees with the robot's heading (`cos > 0.5`), every 0.2 m. Comparing with the gate's previous direction failed in the hairpins (180° in ~0.5 m) and sent the robot back. |
 
 Missing: a driver for the physical start button / RC5 IR receiver. It only has to publish `std_msgs/Empty` on `/race/start_signal` (and `/race/stop_signal`); pin and receiver are not in `docs/01`.
 
 Latest race result, findings and the to-do list: **`docs/REPORT.md`**.
-
-| Map slowly, race fast | `loop_patrol` sets RPP `FollowPath.desired_linear_vel` live: `exploration_speed` 0.3 m/s while mapping, `race_speed` 0.6 m/s once the lap is found (TurtleBot3 overlays: 0.22 / 0.22). At full speed the mapping lap overshot hairpins into corner pockets and got stuck. |
-| Rear gate follows forward travel | The gate advances when the displacement agrees with the robot's heading (`cos > 0.5`), every 0.2 m. Comparing with the gate's previous direction failed in the hairpins (180° in ~0.5 m) and sent the robot back. |
 
 ---
 
