@@ -168,8 +168,9 @@ Harmless log noise you can ignore: RViz `indexed_8bit_image` GLSL link error, Ga
 
 ## 6. Git rules (from `docs/04_git_workflow.md` and the user)
 
-- Work and push only on `not_tested` (or `not_tested/<feature>`) or `optimised`. **Never commit or push to `main`.** Push with an explicit refspec: `git push origin not_tested:not_tested` / `git push origin optimised:optimised`.
+- Work and push only on `not_tested` (or `not_tested/<feature>`), `optimised` or `optimised-3`. **Never commit or push to `main`.** Push with an explicit refspec: `git push origin not_tested:not_tested` / `git push origin optimised:optimised` / `git push origin optimised-3:optimised-3`.
 - `optimised` (from `not_tested` at `1711136`, 2026-11-07): CPU optimisations for the Raspberry Pi 5, first the loop patrol ported to C++ (`docs/REPORT.md` to-do 10–12).
+- `optimised-3` (from `optimised` at `90fa027`, 2026-11-07, user request): two simulated competitor robots (`docs/07`, package `autonom_competitor`), racing with them (rival traces ignored by the patrol, competitors give way), continuous mapping again (the map freeze of `f0b02ea` is reverted), `/map` every 0.2 s.
 - Identity must match local `git config` (Çınar Öztürk). Set it on the new machine before committing.
 
 ---
