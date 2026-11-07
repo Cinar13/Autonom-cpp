@@ -63,4 +63,7 @@ slam_toolbox:
     minimum_distance_penalty: 0.5
     use_response_expansion: true
     min_pass_through: 2
-    occupancy_threshold: 0.1
+    # Fraction of scans through a cell that must hit it for the cell to stay occupied (was 0.1). Walls are hit
+    # by almost every scan; an obstacle that leaves (other robot, removed box) clears after ~1.5x as many scans
+    # without it as it was seen for. At 0.1 removed obstacles stayed in /map and blocked the loop patrol.
+    occupancy_threshold: 0.4

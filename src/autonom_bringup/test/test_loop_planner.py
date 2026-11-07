@@ -3,7 +3,7 @@ import math
 import numpy as np
 
 from autonom_bringup.loop_planner import (
-    GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, start_ahead, plan_exploration_goal, plan_loop, safe_free_space)
+    GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, rear_gate_cells, drop_behind, start_ahead, plan_exploration_goal, plan_loop, safe_free_space)
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
 # Convex room tests exercise waypoint geometry only; a room is not a closed track.
@@ -182,3 +182,59 @@ def test_closed_ring_is_a_loop_but_partial_track_is_not():
 
 def test_convex_room_is_not_a_closed_track():
     assert plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings()) == []
+
+
+def test_exploration_never_falls_back_to_cells_behind():
+    grid = np.full((200, 200), -1, dtype=np.int16)
+    grid[95:105, 40:120] = 0
+    # Robot at the corridor's open end, facing into unknown space: everything known lies behind it.
+    goal = plan_exploration_goal(grid, INFO, (0.8, 0.0), LoopSettings(clearance=0.1), heading=0.0)
+    assert goal is None
+
+
+
+def test_rear_gate_spans_corridor_between_walls():
+    grid = np.zeros((200, 200), dtype=np.int16)
+    grid[80:82, :] = 100   # wall at y = -1.0
+    grid[118:120, :] = 100  # wall at y = +0.9
+    cells = rear_gate_cells(grid, INFO, (0.0, 0.0), direction=0.0, offset=0.4)
+    rows = {r for r, _ in cells}
+    cols = {c for _, c in cells}
+    assert min(rows) <= 81 and max(rows) >= 118      # reaches both walls
+    assert max(cols) < 100                          # behind the robot (x < 0)
+    assert all(90 <= c <= 93 for c in cols)         # at x = -0.4 (column 92)
+
+
+def _steps_to(free, seed, target, limit=2000):
+    from autonom_bringup.loop_planner import _dilate
+    reached = np.zeros_like(free)
+    reached[seed] = True
+    for step in range(limit):
+        if reached[target]:
+            return step
+        grown = _dilate(reached, 1, border=False) & free
+        if np.array_equal(grown, reached):
+            return None
+        reached = grown
+    return None
+
+
+def test_rear_gate_forces_the_long_way_round():
+    from autonom_bringup.loop_planner import safe_free_space
+    grid = _ring()
+    robot = (0.0, -4.0)  # bottom corridor, driving east
+    seed = (int((robot[1] + 5.0) / 0.05), int((robot[0] + 5.0) / 0.05))
+    behind = (seed[0], seed[1] - 16)  # 0.8 m behind the robot, past the gate
+    open_track = _steps_to(safe_free_space(grid, 1, 25), seed, behind)
+    gated = grid.copy()
+    for r, c in rear_gate_cells(grid, INFO, robot, direction=0.0):
+        gated[r, c] = 100
+    gated_track = _steps_to(safe_free_space(gated, 1, 25), seed, behind)
+    assert open_track is not None and open_track <= 20       # straight back: 0.8 m
+    assert gated_track is not None and gated_track > 400     # only forward round the whole ring (>20 m)
+
+
+
+def test_drop_behind_keeps_far_and_forward_waypoints():
+    loop = [(1.0, 0.0, 0.0), (-0.5, 0.2, 0.0), (-3.0, 0.0, 0.0)]
+    assert drop_behind(loop, (0.0, 0.0), 0.0, 2.0) == [(1.0, 0.0, 0.0), (-3.0, 0.0, 0.0)]

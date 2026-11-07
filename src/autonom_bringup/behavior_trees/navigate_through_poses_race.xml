@@ -2,7 +2,7 @@
   Jazzy's navigate_through_poses_w_replanning_and_recovery.xml adapted to the race (docs/06):
   - One continuous path through every lap waypoint: no stop at intermediate poses.
   - Replans at 1 Hz (stock: 0.33 Hz) so other robots on the track are routed around quickly.
-  - Same recoveries as navigate_to_pose_race.xml: back off 0.15 m, clear costmaps, wait 1 s; no Spin.
+  - Same recoveries as navigate_to_pose_race.xml: back off 0.15 m, spin 0.8 rad, clear costmaps, wait 1 s.
 -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -42,6 +42,7 @@
               <ClearEntireCostmap name="ClearLocalCostmap-BackOff" service_name="local_costmap/clear_entirely_local_costmap"/>
               <BackUp backup_dist="0.15" backup_speed="0.10" time_allowance="3.0" error_code_id="{backup_error_code}"/>
             </Sequence>
+            <Spin spin_dist="0.8" time_allowance="4.0" error_code_id="{spin_error_code}"/>
             <Sequence name="ClearingActions">
               <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
               <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>

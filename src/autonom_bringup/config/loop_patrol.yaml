@@ -20,5 +20,12 @@ loop_patrol:
     start_line_half_width: 1.0
     # Exploration goals stay within this distance so Nav2 never takes the shorter way back round the track.
     max_exploration_distance: 2.5
+    # Keepout wall across the track this far behind the robot (global costmap KeepoutFilter): Nav2 can never
+    # plan a path that turns back. Moves forward every rear_gate_update_distance of forward travel.
+    rear_gate_enabled: true
+    rear_gate_offset: 0.4
+    rear_gate_update_distance: 0.3
+    rear_gate_mask_topic: /rear_gate_mask
+    behind_drop_radius: 2.0
     wait_for_race_start: true
     race_state_topic: /race/state

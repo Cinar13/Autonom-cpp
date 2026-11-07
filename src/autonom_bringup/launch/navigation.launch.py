@@ -31,6 +31,7 @@ def _nav2_nodes(context):
         ('nav2_velocity_smoother', 'velocity_smoother', NAV_TO_SMOOTHER + smoothed, {}),
         ('nav2_bt_navigator', 'bt_navigator', [], bt_xml),
         ('nav2_waypoint_follower', 'waypoint_follower', [], {}),
+        ('nav2_map_server', 'costmap_filter_info_server', [], {}),
     ]
     servers = [
         Node(

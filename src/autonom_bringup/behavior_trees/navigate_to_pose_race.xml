@@ -1,6 +1,7 @@
 <!--
   Jazzy's navigate_to_pose_w_replanning_and_recovery.xml adapted to the competition (docs/06, AC-3.5 / AC-4.8):
-  - No Spin recovery: spinning in a 1.5 m corridor next to walls and other robots risks the contact it should cure.
+  - Spin only after BackUp and only 0.8 rad: the footprint is round, so turning in place cannot hit anything, and
+    it frees a robot wedged against an obstacle when both forward and backward are blocked.
   - The first recovery backs off 0.15 m from whatever the LiDAR saw, so wall contact ends well inside 3 s.
   - Wait is 1 s (a passing robot clears the way quickly), not 5 s.
 -->
@@ -39,6 +40,7 @@
               <ClearEntireCostmap name="ClearLocalCostmap-BackOff" service_name="local_costmap/clear_entirely_local_costmap"/>
               <BackUp backup_dist="0.15" backup_speed="0.10" time_allowance="3.0" error_code_id="{backup_error_code}"/>
             </Sequence>
+            <Spin spin_dist="0.8" time_allowance="4.0" error_code_id="{spin_error_code}"/>
             <Sequence name="ClearingActions">
               <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
               <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
