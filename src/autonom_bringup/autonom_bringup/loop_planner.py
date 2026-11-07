@@ -32,6 +32,12 @@ class LoopSettings:
     min_spacing: float = 0.5
     free_threshold: int = 25
     clockwise: bool = False
+    # Waypoint per sector: the cell at the median distance from the centroid (track centre line, so the
+    # shortest path between waypoints may cut the inside of corners) instead of the farthest one (outer wall).
+    centre_line: bool = True
+    # A loop is only planned once the reachable track encloses its centroid (closed ring). Otherwise a partial
+    # map wrapped around the centroid (U or L shape) yields a "loop" that turns 180 degrees at a dead end.
+    require_closed_track: bool = True
     # Exploration goals farther than this are ignored (0 = unlimited). On a closed track a far goal can be
     # closer the other way round, and Nav2 would then drive back through the start point.
     max_exploration_distance: float = 0.0
@@ -70,12 +76,13 @@ def plan_loop(
     """Return loop waypoints (x, y, yaw) in the map frame, starting nearest the robot; empty if none fit."""
     if settings.waypoint_count < 3:
         return []
-    reachable = _reachable_points(grid, info, robot_xy, settings)
-    if reachable is None:
+    mask = _reachable_mask(grid, info, robot_xy, settings)
+    if mask is None:
         return []
-
-    xs, ys = reachable
+    xs, ys = _cell_centres(mask, info)
     centre_x, centre_y = float(xs.mean()), float(ys.mean())
+    if settings.require_closed_track and not encloses(mask, _cell_of(info, (centre_x, centre_y))):
+        return []
     radii = np.hypot(xs - centre_x, ys - centre_y)
     angles = np.arctan2(ys - centre_y, xs - centre_x)
 
@@ -87,10 +94,12 @@ def plan_loop(
     )
     points: List[Tuple[float, float]] = []
     for sector in range(settings.waypoint_count):
-        sector_radii = np.where(sectors == sector, radii, -1.0)
-        best = int(np.argmax(sector_radii))
-        if sector_radii[best] < 0.0:
+        in_sector = np.flatnonzero((sectors == sector) & (radii >= 0.0))
+        if in_sector.size == 0:
             return []
+        sector_radii = radii[in_sector]
+        target = float(np.median(sector_radii)) if settings.centre_line else float(sector_radii.max())
+        best = int(in_sector[np.argmin(np.abs(sector_radii - target))])
         points.append((float(xs[best]), float(ys[best])))
 
     points = _enforce_spacing(points, settings.min_spacing)
@@ -136,10 +145,20 @@ def plan_exploration_goal(
     return x, y, math.atan2(y - robot_xy[1], x - robot_xy[0])
 
 
-def _reachable_points(
+def encloses(region: np.ndarray, cell: Tuple[int, int]) -> bool:
+    """Whether `region` (4-connected) fully surrounds `cell`: the cell is outside the region and a
+    4-connected flood fill through the rest of the grid cannot reach the grid border from it."""
+    row, col = cell
+    if not (0 <= row < region.shape[0] and 0 <= col < region.shape[1]) or region[row, col]:
+        return False
+    outside = reachable_from(~region, (row, col))
+    return not (outside[0, :].any() or outside[-1, :].any() or outside[:, 0].any() or outside[:, -1].any())
+
+
+def _reachable_mask(
     grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
-) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Map-frame centres of safe cells connected to the robot, or None when there are none."""
+) -> Optional[np.ndarray]:
+    """Safe cells connected to the robot, or None when there are none."""
     if grid.ndim != 2 or info.resolution <= 0.0:
         return None
     clearance_cells = max(1, math.ceil(settings.clearance / info.resolution))
@@ -147,8 +166,25 @@ def _reachable_points(
     seed = _nearest_cell(safe, info, robot_xy)
     if seed is None:
         return None
-    rows, cols = np.nonzero(reachable_from(safe, seed))
+    return reachable_from(safe, seed)
+
+
+def _cell_centres(mask: np.ndarray, info: GridInfo) -> Tuple[np.ndarray, np.ndarray]:
+    rows, cols = np.nonzero(mask)
     return info.origin_x + (cols + 0.5) * info.resolution, info.origin_y + (rows + 0.5) * info.resolution
+
+
+def _cell_of(info: GridInfo, xy: Tuple[float, float]) -> Tuple[int, int]:
+    return int(math.floor((xy[1] - info.origin_y) / info.resolution)), int(
+        math.floor((xy[0] - info.origin_x) / info.resolution))
+
+
+def _reachable_points(
+    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
+) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Map-frame centres of safe cells connected to the robot, or None when there are none."""
+    mask = _reachable_mask(grid, info, robot_xy, settings)
+    return None if mask is None else _cell_centres(mask, info)
 
 
 def _nearest_cell(mask: np.ndarray, info: GridInfo, xy: Tuple[float, float]) -> Optional[Tuple[int, int]]:

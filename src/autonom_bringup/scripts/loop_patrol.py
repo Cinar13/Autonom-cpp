@@ -33,6 +33,7 @@ class LoopPatrol(Node):
         self.min_known_area = self.declare_parameter('min_known_area', 4.0).value
         self.lap_pause = self.declare_parameter('lap_pause', 2.0).value
         self.retry_period = self.declare_parameter('retry_period', 3.0).value
+        self.preempt_poses_remaining = self.declare_parameter('preempt_poses_remaining', 1).value
         self.wait_for_race_start = self.declare_parameter('wait_for_race_start', True).value
         # 'auto': laps run the way the robot faced at the start; it must never cross the start backwards.
         self.direction = self.declare_parameter('direction', 'auto').value
@@ -42,6 +43,7 @@ class LoopPatrol(Node):
         self.start_line = None
         self._start_monitor = None
         self.laps_completed = 0
+        self._last_crossing = None
         self.reverse_crossings = 0
         self.settings = LoopSettings(
             waypoint_count=self.declare_parameter('waypoint_count', 8).value,
@@ -180,7 +182,10 @@ class LoopPatrol(Node):
         crossing = self._start_monitor.update(pose[:2])
         if crossing > 0:
             self.laps_completed += 1
-            self.get_logger().info(f'Start line crossed forward: {self.laps_completed} lap(s) completed')
+            now = self.get_clock().now()
+            lap_time = '' if self._last_crossing is None else f' in {(now - self._last_crossing).nanoseconds * 1e-9:.1f} s'
+            self._last_crossing = now
+            self.get_logger().info(f'Start line crossed forward: {self.laps_completed} lap(s) completed{lap_time}')
         elif crossing < 0:
             self.reverse_crossings += 1
             self.get_logger().error(
@@ -222,7 +227,13 @@ def main():
                 x, y, _ = waypoints[0]
                 label = f'Exploration step to ({x:.2f}, {y:.2f})'
             patrol.get_logger().info(f'{label}: {len(waypoints)} waypoint(s)')
-            navigator.followWaypoints([to_pose(patrol.global_frame, *w) for w in waypoints])
+            poses = [to_pose(patrol.global_frame, *w) for w in waypoints]
+            if kind == 'loop':
+                # One continuous path through the whole lap; sending the next lap preempts this goal.
+                navigator.goThroughPoses(poses)
+            else:
+                navigator.goToPose(poses[0])
+            preempted = False
             while not navigator.isTaskComplete():
                 rclpy.spin_once(patrol, timeout_sec=0.05)
                 patrol.watch_start_line()
@@ -230,7 +241,13 @@ def main():
                     patrol.get_logger().warn(f'Race stopped during {label}; cancelling the goal')
                     navigator.cancelTask()
                     break
-            if not patrol.racing:
+                feedback = navigator.getFeedback()
+                if (kind == 'loop' and feedback is not None
+                        and 0 < feedback.number_of_poses_remaining <= patrol.preempt_poses_remaining):
+                    # Plan and send the next lap while still driving, so the robot never brakes for a lap end.
+                    preempted = True
+                    break
+            if not patrol.racing or preempted:
                 continue
 
             result = navigator.getResult()

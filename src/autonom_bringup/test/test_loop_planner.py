@@ -6,6 +6,8 @@ from autonom_bringup.loop_planner import (
     GridInfo, LoopSettings, StartLine, StartLineMonitor, loop_follows_heading, start_ahead, plan_exploration_goal, plan_loop, safe_free_space)
 
 INFO = GridInfo(resolution=0.05, origin_x=-5.0, origin_y=-5.0)
+# Convex room tests exercise waypoint geometry only; a room is not a closed track.
+ROOM = LoopSettings(require_closed_track=False)
 
 
 def _room(size_cells=200, wall=2):
@@ -15,7 +17,7 @@ def _room(size_cells=200, wall=2):
 
 
 def test_clearance_keeps_waypoints_away_from_walls():
-    settings = LoopSettings(clearance=0.4)
+    settings = LoopSettings(clearance=0.4, require_closed_track=False)
     waypoints = plan_loop(_room(), INFO, (0.0, 0.0), settings)
     assert len(waypoints) >= 3
     for x, y, _ in waypoints:
@@ -24,7 +26,7 @@ def test_clearance_keeps_waypoints_away_from_walls():
 
 
 def test_loop_starts_nearest_robot_and_heads_to_next_waypoint():
-    waypoints = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings())
+    waypoints = plan_loop(_room(), INFO, (4.0, 4.0), ROOM)
     distances = [math.dist((x, y), (4.0, 4.0)) for x, y, _ in waypoints]
     assert distances[0] == min(distances)
     x0, y0, yaw0 = waypoints[0]
@@ -35,7 +37,7 @@ def test_loop_starts_nearest_robot_and_heads_to_next_waypoint():
 def test_unreachable_region_is_ignored():
     grid = _room()
     grid[:, 100:104] = 100
-    waypoints = plan_loop(grid, INFO, (-2.5, 0.0), LoopSettings())
+    waypoints = plan_loop(grid, INFO, (-2.5, 0.0), ROOM)
     assert waypoints
     assert all(x < 0.0 for x, _, _ in waypoints)
 
@@ -74,8 +76,8 @@ def _signed_area(waypoints):
 
 
 def test_loop_direction_follows_setting():
-    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=False))
-    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True))
+    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=False, require_closed_track=False))
+    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True, require_closed_track=False))
     assert _signed_area(ccw) > 0.0
     assert _signed_area(cw) < 0.0
     assert cw[0][:2] == ccw[0][:2]
@@ -126,11 +128,11 @@ def test_far_side_of_track_is_ignored():
 
 
 def test_loop_orientation_matches_start_heading():
-    ccw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings())
+    ccw = plan_loop(_room(), INFO, (4.0, 4.0), ROOM)
     x0, y0, _ = ccw[0]
     assert loop_follows_heading(ccw, (x0, y0), ccw[0][2])
     assert not loop_follows_heading(ccw, (x0, y0), ccw[0][2] + math.pi)
-    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True))
+    cw = plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings(clockwise=True, require_closed_track=False))
     assert loop_follows_heading(cw, (x0, y0), ccw[0][2] + math.pi)
 
 
@@ -146,3 +148,37 @@ def test_start_ahead_skips_waypoint_behind_robot():
     loop = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0)]
     assert start_ahead(loop, (0.2, 0.0), 0.0)[0] == (1.0, 0.0, 0.0)
     assert start_ahead(loop, (-0.2, 0.0), 0.0) == loop
+
+
+def _ring():
+    """Square track: 10 m outer wall, 6 m inner block, 2 m wide corridor."""
+    grid = _room()
+    grid[40:160, 40:160] = 100
+    return grid
+
+
+def test_centre_line_waypoints_sit_mid_corridor():
+    waypoints = plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2))
+    assert len(waypoints) == 8
+    # Corridor spans 3..5 m from the centre (chebyshev distance), 3.2..4.8 m with clearance. Side sectors sit
+    # near the 4 m centre line; corner sectors lean to the inside of the corner.
+    offsets = [max(abs(x), abs(y)) for x, y, _ in waypoints]
+    assert all(3.2 <= d <= 4.8 for d in offsets)
+    assert sum(offsets) / len(offsets) < 4.1
+
+
+def test_outer_wall_waypoints_when_centre_line_disabled():
+    waypoints = plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2, centre_line=False))
+    assert all(max(abs(x), abs(y)) > 4.6 for x, y, _ in waypoints)
+
+
+
+def test_closed_ring_is_a_loop_but_partial_track_is_not():
+    assert plan_loop(_ring(), INFO, (0.0, -4.0), LoopSettings(clearance=0.2))
+    u_shape = _ring()
+    u_shape[160:198, 90:110] = -1
+    assert plan_loop(u_shape, INFO, (0.0, -4.0), LoopSettings(clearance=0.2)) == []
+
+
+def test_convex_room_is_not_a_closed_track():
+    assert plan_loop(_room(), INFO, (4.0, 4.0), LoopSettings()) == []
