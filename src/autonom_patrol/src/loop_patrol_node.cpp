@@ -49,7 +49,21 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   // incomplete. 0 leaves the controller's own desired_linear_vel untouched.
   exploration_speed_ = declare_parameter<double>("exploration_speed", 0.0);
   race_speed_ = declare_parameter<double>("race_speed", 0.0);
+  // Gentler acceleration while mapping (velocity_smoother max_accel [x, y, theta]), the race limits once the lap
+  // is found. Empty leaves the smoother's own limits untouched.
+  exploration_max_accel_ = declare_parameter<std::vector<double>>("exploration_max_accel", std::vector<double>{});
+  race_max_accel_ = declare_parameter<std::vector<double>>("race_max_accel", std::vector<double>{});
+  // Fast mode (race_speed, race_max_accel) starts this many seconds after the map is finished: the map freeze
+  // (localize_after_laps), or the first lap found when the map is never frozen. Laps before that run at the
+  // exploration speed and acceleration.
+  race_speed_delay_ = declare_parameter<double>("race_speed_delay", 0.0);
+  for (const auto * accel : {&exploration_max_accel_, &race_max_accel_}) {
+    if (!accel->empty() && accel->size() != 3) {
+      throw std::invalid_argument("exploration_max_accel / race_max_accel must be empty or [x, y, theta]");
+    }
+  }
   const auto controller = declare_parameter<std::string>("controller_server", "controller_server");
+  const auto smoother = declare_parameter<std::string>("velocity_smoother", "velocity_smoother");
   // Rear gate: keepout wall across the track behind the robot (global costmap KeepoutFilter), so Nav2 can never
   // plan a path that turns back (docs/06 section 4).
   rear_gate_enabled_ = declare_parameter<bool>("rear_gate_enabled", true);
@@ -63,6 +77,12 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
     throw std::invalid_argument("direction must be 'auto', 'clockwise' or 'counterclockwise', got '" + direction_ + "'");
   }
   start_line_half_width_ = declare_parameter<double>("start_line_half_width", 1.0);
+  // Phase 2: after this many forward start-line crossings with a lap found, switch slam_toolbox
+  // (map_and_localization node) to localization: scans are matched against the map built so far and the map stops
+  // growing, so competitor robots can no longer warp it. 0 keeps mapping for the whole race.
+  localize_after_laps_ = static_cast<int>(declare_parameter<std::int64_t>("localize_after_laps", 0));
+  const auto localization_service = declare_parameter<std::string>(
+    "localization_mode_service", "/slam_toolbox/set_localization_mode");
   settings_.clearance = declare_parameter<double>("clearance", 0.35);
   settings_.min_spacing = declare_parameter<double>("min_spacing", 0.5);
   settings_.free_threshold = static_cast<int>(declare_parameter<std::int64_t>("free_threshold", 25));
@@ -91,6 +111,10 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   loop_client_ = rclcpp_action::create_client<NavigateThroughPoses>(this, "navigate_through_poses");
   explore_client_ = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
   controller_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, controller);
+  smoother_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, smoother);
+  if (localize_after_laps_ > 0) {
+    localization_client_ = create_client<std_srvs::srv::SetBool>(localization_service);
+  }
   // Wall timer: runs before /clock arrives and is independent of the simulation rate.
   timer_ = create_wall_timer(std::chrono::milliseconds(50), [this] { onTick(); });
 }
@@ -116,6 +140,9 @@ void LoopPatrolNode::onTick()
     if (const auto pose = robotPose()) {
       watchStartLine(*pose);
     }
+  }
+  if (fast_at_ && !fast_ && kind_ == Kind::kLoop) {
+    updateDrivingProfile();
   }
   if (phase_ == Phase::kActive) {
     watchActive();
@@ -312,7 +339,10 @@ void LoopPatrolNode::sendLoop(const std::vector<Waypoint> & waypoints)
   ++lap_;
   label_ = "Lap " + std::to_string(lap_);
   RCLCPP_INFO(get_logger(), "%s: %zu waypoint(s)", label_.c_str(), waypoints.size());
-  setSpeed(race_speed_);
+  if (!localization_client_ && !fast_at_) {
+    startFastModeTimer();  // the map is never frozen: the first lap marks it finished
+  }
+  updateDrivingProfile();
   NavigateThroughPoses::Goal goal;
   for (const auto & w : waypoints) {
     goal.poses.push_back(toPose(w));
@@ -360,6 +390,7 @@ void LoopPatrolNode::sendExploration(const Waypoint & target)
   label_ = label;
   RCLCPP_INFO(get_logger(), "%s: 1 waypoint(s)", label_.c_str());
   setSpeed(exploration_speed_);
+  setAcceleration(exploration_max_accel_);
   NavigateToPose::Goal goal;
   goal.pose = toPose(target);
   const auto seq = ++goal_seq_;
@@ -449,6 +480,54 @@ void LoopPatrolNode::setSpeed(double speed)
     });
 }
 
+void LoopPatrolNode::startFastModeTimer()
+{
+  fast_at_ = get_clock()->now() + rclcpp::Duration::from_seconds(race_speed_delay_);
+  if (race_speed_delay_ > 0.0) {
+    RCLCPP_INFO(get_logger(), "Map finished: fast mode in %.1f s", race_speed_delay_);
+  }
+}
+
+void LoopPatrolNode::updateDrivingProfile()
+{
+  // Laps drive at the exploration profile until fast mode starts, then at the race profile.
+  if (fast_at_ && get_clock()->now() >= *fast_at_) {
+    if (!fast_) {
+      fast_ = true;
+      RCLCPP_INFO(get_logger(), "Fast mode");
+    }
+    setSpeed(race_speed_);
+    setAcceleration(race_max_accel_);
+  } else {
+    setSpeed(exploration_speed_);
+    setAcceleration(exploration_max_accel_);
+  }
+}
+
+void LoopPatrolNode::setAcceleration(const std::vector<double> & max_accel)
+{
+  // velocity_smoother max_accel, set only when it changes (same pattern as setSpeed).
+  if (max_accel.empty() || accel_ == max_accel) {
+    return;
+  }
+  if (!smoother_params_->service_is_ready()) {
+    RCLCPP_WARN_THROTTLE(get_logger(), steady_clock_, kThrottleMs, "Could not set the acceleration limits");
+    return;
+  }
+  accel_ = max_accel;
+  smoother_params_->set_parameters(
+    {rclcpp::Parameter("max_accel", max_accel)},
+    [this, max_accel](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
+      const auto results = future.get();
+      if (std::all_of(results.begin(), results.end(), [](const auto & r) { return r.successful; })) {
+        RCLCPP_INFO(get_logger(), "Max acceleration %.2f m/s^2, %.2f rad/s^2", max_accel[0], max_accel[2]);
+      } else {
+        accel_.clear();
+        RCLCPP_WARN(get_logger(), "velocity_smoother refused max_accel");
+      }
+    });
+}
+
 void LoopPatrolNode::watchStartLine(const Waypoint & pose)
 {
   // Count forward crossings as laps; report reverse crossings (team rule, docs/06 section 4).
@@ -464,10 +543,37 @@ void LoopPatrolNode::watchStartLine(const Waypoint & pose)
       RCLCPP_INFO(get_logger(), "Start line crossed forward: %d lap(s) completed", laps_completed_);
     }
     last_crossing_ = now;
+    if (lap_ > 0) {
+      ++crossings_with_lap_;
+    }
+    if (localization_client_ && !localization_requested_ && crossings_with_lap_ >= localize_after_laps_) {
+      requestLocalizationMode();
+    }
   } else if (crossing < 0) {
     ++reverse_crossings_;
     RCLCPP_ERROR(get_logger(), "REVERSE crossing of the start line (%d): against the rules", reverse_crossings_);
   }
+}
+
+void LoopPatrolNode::requestLocalizationMode()
+{
+  // One request per race; a missing service (async_slam_toolbox_node) leaves the robot mapping.
+  localization_requested_ = true;
+  startFastModeTimer();
+  if (!localization_client_->service_is_ready()) {
+    RCLCPP_WARN(get_logger(), "%s not available; slam_toolbox keeps mapping", localization_client_->get_service_name());
+    return;
+  }
+  auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+  request->data = true;
+  localization_client_->async_send_request(request,
+    [this](rclcpp::Client<std_srvs::srv::SetBool>::SharedFuture future) {
+      if (future.get()->success) {
+        RCLCPP_INFO(get_logger(), "Map frozen: slam_toolbox now localizes by scan matching against it");
+      } else {
+        RCLCPP_WARN(get_logger(), "slam_toolbox refused localization mode; it keeps mapping");
+      }
+    });
 }
 
 void LoopPatrolNode::updateRearGate(const Waypoint & pose)
