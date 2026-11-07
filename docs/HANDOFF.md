@@ -133,7 +133,6 @@ Harmless log noise you can ignore: RViz `indexed_8bit_image` GLSL link error, Ga
 
 - Work and push only on `not_tested` (or `not_tested/<feature>`). **Never commit or push to `main`.** Push with an explicit refspec: `git push origin not_tested:not_tested`.
 - Identity must match local `git config` (Çınar Öztürk). Set it on the new machine before committing.
-- The SSH key passphrase is `max`. Load it with `eval "$(ssh-agent -s)" && ssh-add ~/.ssh/id_ed25519`. The new machine needs the key copied over, or a new key added to GitHub.
 
 ---
 
