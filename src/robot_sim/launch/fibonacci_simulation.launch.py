@@ -5,6 +5,9 @@ robot:=tb3       the TurtleBot3 Burger placeholder with config/nav2_fibonacci.ya
 robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot3_burger_fast.urdf.xacro,
                  config/nav2_fibonacci_fast.yaml)
 
+The EKF fuses the gyro and rf2o laser odometry by default (use_imu, use_rf2o): at 0.6 m/s the TurtleBot3's
+wheels slip and wheel-only odometry drifted up to 0.35 m / 1 rad; fused it stayed within 0.17 m over 3 minutes.
+
 The robot spawns in the middle of the bottom corridor facing +x; laps run in the direction it faces at the
 start, so set yaw:=3.1416 to race the other way round. Any tb3_simulation argument can be added.
 """
@@ -41,6 +44,8 @@ def _simulation(context):
         'x': LaunchConfiguration('x'),
         'y': LaunchConfiguration('y'),
         'yaw': LaunchConfiguration('yaw'),
+        'use_imu': LaunchConfiguration('use_imu'),
+        'use_rf2o': LaunchConfiguration('use_rf2o'),
     }
     return [IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(sim_share, 'launch', 'tb3_simulation.launch.py')),
@@ -54,5 +59,7 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='0.0'),
         DeclareLaunchArgument('y', default_value='-0.735'),
         DeclareLaunchArgument('yaw', default_value='0.0'),
+        DeclareLaunchArgument('use_imu', default_value='true', description='Fuse the simulated gyro in the EKF'),
+        DeclareLaunchArgument('use_rf2o', default_value='true', description='Fuse rf2o laser odometry in the EKF'),
         OpaqueFunction(function=_simulation),
     ])
