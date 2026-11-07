@@ -1,25 +1,7 @@
 # Race readiness report: 2026-11-07
 
-Branches `not_tested` and `optimised` (latest results first). Everything below was verified in Gazebo Harmonic
-(RTX 4050) unless marked otherwise.
+Branch `not_tested`. Everything below was verified in Gazebo Harmonic (RTX 4050) unless marked otherwise.
 Nothing has run on the real robot yet. Details per change are in `docs/HANDOFF.md`, section 1.
-
-## Result (branch `optimised`, map frozen after the mapping lap, `f0b02ea`)
-
-Fibonacci arena, `robot:=tb3_fast`, 3-minute races with the Gazebo GUI, lap times and map error from Gazebo
-ground truth. The map is frozen at the first forward start-line crossing after the lap is found; fast mode
-(0.6 m/s) starts 10 s later.
-
-| Run | Race laps after the mapping lap | Lap times | Failed laps | Collision stalls | Map error max |
-|---|---|---|---|---|---|
-| Default direction | 6 | 15.5–25.4 s | 1 (recovered) | 133 | 0.35 m |
-| Reverse direction (`yaw:=3.1416`) | **7** | 15.7–17.4 s | 0 | 26 | 0.31 m |
-| 7 cm post on the right straight, 30 s | **7** | 15.9–21.4 s | 0 | 82 | 0.36 m |
-| Default, 10 s fast-mode delay | 6 | 16.0–21.1 s | 1 (recovered) | 155 | 0.39 m |
-
-0 reverse crossings in every run; the robot passed the post twice without contact (closest 2 cm). Before the
-freeze the map error kept growing through the race (1.26 m with rf2o off). It now stays at the value reached
-during the mapping lap.
 
 ## Result (branch `optimised`, C++ loop patrol)
 
@@ -52,16 +34,13 @@ Robot: TurtleBot3 body with Gazebo limits raised to the real robot's 0.6 m/s, on
 - **Start**: 5 s start gate (`autonom_race`); `/cmd_vel` is held at zero until it releases.
 - **Never turns back**: a keepout wall across the track behind the robot (rear gate, global costmap
   KeepoutFilter) follows forward travel; exploration goals and laps are planned by driving distance ahead.
-- **Mapping lap**: explores the track centre line at 0.3 m/s with gentle acceleration (0.5 m/s², 2 rad/s²)
-  until the ring closes.
-- **Map freeze**: at the first forward start-line crossing after the lap is found, slam_toolbox switches to
-  localization against the map it just built; the map no longer changes.
-- **Race laps**: one continuous Nav2 goal per lap along the centre line; fast mode (0.6 m/s, 1.5 m/s²,
-  5 rad/s²) starts 10 s after the freeze. The next lap is sent before the current one ends.
+- **Mapping lap**: explores the track centre line at 0.3 m/s until the ring closes.
+- **Race laps**: one continuous Nav2 goal per lap along the centre line at 0.6 m/s; the next lap is sent before
+  the current one ends.
 - **Moving robots / removed obstacles**: global costmap from live LiDAR only (speckle-filtered); the patrol
   reuses its last lap while an obstacle breaks the map.
-- **Localisation**: EKF fuses wheels, the IMU (yaw rate + forward acceleration) and rf2o's forward speed
-  (rf2o's yaw rate is not used); slam_toolbox maps the loop live as `docs/06` requires, then localizes on it.
+- **Localisation**: EKF fuses wheels, gyro and rf2o (default on the arena; wheels alone drifted up to 1 rad at
+  0.6 m/s); slam_toolbox maps live as `docs/06` requires.
 
 ## Key findings this session
 
@@ -74,8 +53,6 @@ Robot: TurtleBot3 body with Gazebo limits raised to the real robot's 0.6 m/s, on
 | Stuck in corner pockets at 0.6 m/s | overshoot while the map was incomplete | map at 0.3 m/s, race at 0.6 m/s |
 | Odometry drift at speed | wheel slip | gyro + rf2o fused |
 | Patrol never sent goals | `waitUntilNav2Active` without timeout | own wait with retries |
-| Map kept drifting during the race (0.5 m → 1.26 m) | slam_toolbox kept adding scans at 0.6 m/s | freeze the map after the mapping lap (localization mode) |
-| rf2o removed: map error 1.26 m, a real reverse crossing | wheels + gyro alone are not enough at 0.6 m/s | keep rf2o, `vx` only |
 
 ## CPU and memory (robot side)
 
@@ -109,19 +86,17 @@ map; with 0.1 it converges cheaply. Without the ~0.9 core of sim `/clock` overhe
 
 Ordered by expected effect on the score.
 
-1. ~~SLAM map degrades after ~2.5 min at race speed~~ **fixed by the map freeze** (`f0b02ea`): the error no
-   longer grows after the mapping lap. What remains is the 0.3–0.4 m built up during the mapping lap; candidates:
-   stricter loop-closure matching, smaller `minimum_travel_distance` / `heading` (`docs/HANDOFF.md` §4.8).
-2. ~~Lap counter undercounts~~ **fixed with the freeze**: the patrol's count matches ground truth in every run.
-3. **Slow laps (22–25 s) and 130–200 collision stalls in the default (+x) direction**, not in reverse (26
-   stalls, 16 s laps). Find the tight spot from the ground-truth path; loosen RPP braking
-   (`regulated_linear_scaling_min_radius`) and its wall-distance slowdown (`cost_scaling_dist`). This is also the
-   "faster turns" request.
+1. **SLAM map degrades after ~2.5 min at race speed.** In the last race the SLAM pose showed false reverse
+   crossings from 151 s while the robot (ground truth) still lapped forward. Measure it with the recorder
+   (map + scan snapshots, ground truth) and look at loop-closure behaviour over many laps.
+2. **Lap counter undercounts** (2 counted vs 6 driven). It depends on the SLAM pose and the wall-aware start
+   zone; once 1 is fixed re-check, or count laps on odometry-corrected crossings.
+3. **One slow lap (33 s) per race.** Find what stalls it (snapshots around the lap); RPP collision stalls are the
+   usual suspect at hairpins.
 4. **Real robot model** (`robot:=autonom` or the coming smaller model): race the full 3 minutes in the sim;
    set `robot_radius`, `inflation_radius`, patrol `clearance`, wheel geometry (URDF + `hardware.yaml`).
-5. **Moving rivals**: a static 7 cm post on the arena for 30 s was passed without contact and left no trace in the
-   frozen map; the two-cylinder moving harness was only written for the old circuit. Port it to the arena and
-   race against 2–4 moving rivals.
+5. **Moving rivals**: the two-cylinder harness was only written for the old circuit; port it to the arena and
+   race against 2–4 rivals.
 6. **Real hardware bring-up** (`docs/HANDOFF.md` §4.5): pins, PWM chip, encoder ticks, PID, LiDAR yaw, permissions.
 7. **Start signal driver**: button / RC5 IR publishing `/race/start_signal` (pin not in `docs/01`).
 8. **Official rule numbers** for the team rule "no reverse crossing of the start" (`docs/06` §4).
