@@ -1,5 +1,9 @@
 # Nav2 for mapping-while-navigating: slam_toolbox provides /map and map->odom (no AMCL / map_server).
 # Regulated Pure Pursuit is used instead of MPPI to keep the Raspberry Pi 5 CPU budget for SLAM.
+# Competition tuning (docs/06_competition_rules.md): inflation is robot_radius + 20 mm (user decision, 2026-11-07),
+# so plans may pass close to walls; the loop patrol's `clearance` keeps waypoints on the track centre line.
+# RPP slows down near walls and other robots, and a stuck robot is detected within 2 s so the race behavior tree
+# (behavior_trees/navigate_to_pose_race.xml) backs it off before the 3 s wall-contact limit.
 
 bt_navigator:
   ros__parameters:
@@ -34,9 +38,11 @@ controller_server:
     use_realtime_priority: false
 
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.3
-      movement_time_allowance: 15.0
+      # Counts rotation as progress too, so rotate-to-heading is not mistaken for being stuck.
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.10
+      required_movement_angle: 0.35
+      movement_time_allowance: 2.0
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       stateful: true
@@ -46,7 +52,10 @@ controller_server:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.25
       lookahead_dist: 0.5
-      min_lookahead_dist: 0.25
+      # Must stay above general_goal_checker.xy_goal_tolerance (0.25): RPP compares the *carrot* distance with
+      # that tolerance, and a slow robot clamps the carrot to min_lookahead_dist. At 0.25 the carrot sat at
+      # 0.2499..., latched "rotate to goal heading" (vx = 0) far from the goal, and the robot stalled in turns.
+      min_lookahead_dist: 0.35
       max_lookahead_dist: 0.9
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
@@ -57,8 +66,12 @@ controller_server:
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
-      use_cost_regulated_linear_velocity_scaling: false
-      regulated_linear_scaling_min_radius: 0.9
+      use_cost_regulated_linear_velocity_scaling: true
+      cost_scaling_dist: 0.35
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 3.0
+      # Only brake for tight turns (was 0.9 m): the centre-line path through corners is mostly gentler.
+      regulated_linear_scaling_min_radius: 0.5
       regulated_linear_scaling_min_speed: 0.1
       use_rotate_to_heading: true
       rotate_to_heading_min_angle: 0.785
@@ -84,7 +97,8 @@ local_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          # Speckle-filtered: one noisy beam must not become a lethal obstacle (slam_toolbox keeps /scan).
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -95,8 +109,8 @@ local_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 4.0
-        inflation_radius: 0.40
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.17
       always_send_full_costmap: true
 
 global_costmap:
@@ -118,7 +132,8 @@ global_costmap:
         enabled: true
         observation_sources: scan
         scan:
-          topic: /scan
+          # Speckle-filtered: one noisy beam must not become a lethal obstacle (slam_toolbox keeps /scan).
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: true
           marking: true
@@ -129,8 +144,8 @@ global_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 4.0
-        inflation_radius: 0.45
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.17
       always_send_full_costmap: true
 
 planner_server:

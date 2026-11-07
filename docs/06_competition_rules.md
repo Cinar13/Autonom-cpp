@@ -22,3 +22,10 @@ This project is governed by the Fibonacci International Robot Olympiad - Autonom
 *   **Software Requirement:**
     *   The `slam_toolbox` node must map the closed loop asynchronously.
     *   A continuous looping script (Python action client) should feed sequential Nav2 waypoints along the track to keep the robot circling endlessly for the 3-minute round duration.
+
+## 4. No Reverse Crossing of the Starting Point (team rule)
+*   **Rule:** The robot must never pass the starting point in the reverse direction (against the direction it was placed in at the start). Driving the track backwards is against the rules. Added by the team on 2026-11-07; the matching official AC rule number has not been looked up yet.
+*   **Software Requirement:**
+    *   Record the start pose when the race starts. The start line passes through the start position, perpendicular to the start heading; the lap direction is the start heading.
+    *   The loop patrol must only drive laps in that direction and must not send goals whose shortest path would wrap backwards around the track.
+    *   Monitor the start line: log every forward crossing (completed lap) and report any reverse crossing as an error.
