@@ -14,6 +14,8 @@ from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import String
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.parameter import Parameter
+from rclpy.parameter_client import AsyncParameterClient
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
@@ -34,6 +36,13 @@ class LoopPatrol(Node):
         self.lap_pause = self.declare_parameter('lap_pause', 2.0).value
         self.retry_period = self.declare_parameter('retry_period', 3.0).value
         self.preempt_poses_remaining = self.declare_parameter('preempt_poses_remaining', 1).value
+        # Map slowly, race fast: at full speed the robot overshot hairpins into corner pockets while the map was
+        # still incomplete and got stuck. 0 leaves the controller's own desired_linear_vel untouched.
+        self.exploration_speed = self.declare_parameter('exploration_speed', 0.0).value
+        self.race_speed = self.declare_parameter('race_speed', 0.0).value
+        self._speed = None
+        self._controller_params = AsyncParameterClient(
+            self, self.declare_parameter('controller_server', 'controller_server').value)
         # Rear gate: a keepout wall across the track behind the robot, so Nav2 can never plan a path that
         # turns back (no reverse travel, docs/06 section 4). Needs the global costmap KeepoutFilter.
         self.rear_gate_enabled = self.declare_parameter('rear_gate_enabled', True).value
@@ -152,6 +161,21 @@ class LoopPatrol(Node):
         self.spin_for(self.retry_period)
         return 'wait', []
 
+    def set_speed(self, speed: float, timeout: float = 2.0):
+        """Set the path follower's cruise speed (RPP FollowPath.desired_linear_vel) when it changes."""
+        if speed <= 0.0 or speed == self._speed:
+            return
+        future = self._controller_params.set_parameters(
+            [Parameter('FollowPath.desired_linear_vel', value=float(speed))])
+        deadline = time.monotonic() + timeout
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        if future.done() and all(r.successful for r in future.result().results):
+            self._speed = speed
+            self.get_logger().info(f'Cruise speed {speed:.2f} m/s')
+        else:
+            self.get_logger().warn(f'Could not set cruise speed {speed:.2f} m/s', throttle_duration_sec=10.0)
+
     def wait_until_active(self, node_names, request_timeout=2.0):
         """Block until every lifecycle node reports ACTIVE.
 
@@ -209,15 +233,23 @@ class LoopPatrol(Node):
         return start_ahead(drop_behind(cycle, robot_xy, direction, self.behind_drop_radius), robot_xy, direction)
 
     def update_rear_gate(self, pose):
-        """Advance the gate with the robot's forward travel; never flip it when the robot moves backwards."""
+        """Advance the gate with the robot's forward travel; never move it while the robot backs up.
+
+        Forward travel means the displacement agrees with the robot's own heading. (Comparing it with the gate's
+        previous direction instead failed in the arena's hairpins: a 180 degree turn in ~0.5 m exceeds 90 degrees
+        within one update step, the gate stuck pointing the old way and the robot was sent back.)
+        """
         if not self.rear_gate_enabled or self._gate_anchor is None:
             return
         dx, dy = pose[0] - self._gate_anchor[0], pose[1] - self._gate_anchor[1]
         if math.hypot(dx, dy) < self.rear_gate_step:
             return
         direction = math.atan2(dy, dx)
-        if math.cos(direction - self._gate_direction) <= 0.0:
-            return  # backing up or pushed back: keep the gate where it is
+        if math.cos(direction - pose[2]) < 0.5:
+            # Backing up, pushed, or turning on the spot: re-anchor only, keep the gate's direction.
+            if math.cos(direction - pose[2]) < 0.0:
+                self._gate_anchor = pose[:2]
+            return
         self._gate_anchor, self._gate_direction = pose[:2], direction
         self.publish_rear_gate()
 
@@ -295,6 +327,7 @@ def main():
                 label = f'Exploration step to ({x:.2f}, {y:.2f})'
             patrol.get_logger().info(f'{label}: {len(waypoints)} waypoint(s)')
             poses = [to_pose(patrol.global_frame, *w) for w in waypoints]
+            patrol.set_speed(patrol.race_speed if kind == 'loop' else patrol.exploration_speed)
             if kind == 'loop':
                 # One continuous path through the whole lap; sending the next lap preempts this goal.
                 navigator.goThroughPoses(poses)

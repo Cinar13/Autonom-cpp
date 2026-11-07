@@ -46,6 +46,8 @@ velocity_smoother:
 
 loop_patrol:
   ros__parameters:
+    exploration_speed: 0.22
+    race_speed: 0.22
     # circuit2 corridors are ~1.43 m clear: waypoints 0.5 m off the walls sit near the centre line.
     clearance: 0.5
     min_spacing: 0.4

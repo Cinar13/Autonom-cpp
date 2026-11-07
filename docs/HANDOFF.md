@@ -66,6 +66,11 @@ race_start_gate -> /race/state (latched) -> loop_patrol sends goals only while R
 
 Missing: a driver for the physical start button / RC5 IR receiver. It only has to publish `std_msgs/Empty` on `/race/start_signal` (and `/race/stop_signal`); pin and receiver are not in `docs/01`.
 
+Latest race result, findings and the to-do list: **`docs/REPORT.md`**.
+
+| Map slowly, race fast | `loop_patrol` sets RPP `FollowPath.desired_linear_vel` live: `exploration_speed` 0.3 m/s while mapping, `race_speed` 0.6 m/s once the lap is found (TurtleBot3 overlays: 0.22 / 0.22). At full speed the mapping lap overshot hairpins into corner pockets and got stuck. |
+| Rear gate follows forward travel | The gate advances when the displacement agrees with the robot's heading (`cos > 0.5`), every 0.2 m. Comparing with the gate's previous direction failed in the hairpins (180° in ~0.5 m) and sent the robot back. |
+
 ---
 
 ## 2. Setting up the new machine
