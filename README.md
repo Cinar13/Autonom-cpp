@@ -5,6 +5,8 @@ unknown environment with `slam_toolbox` and patrols continuous loops around the 
 RViz runs on a WSL2 base station only. A Gazebo Harmonic simulation (TurtleBot3 Burger placeholder on the
 `circuit2` track) runs the identical autonomy pipeline with `use_sim_time:=true`.
 
+**Current state, open issues and the test plan: [`docs/HANDOFF.md`](docs/HANDOFF.md).**
+
 | Package | Role |
 |---|---|
 | `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → A4950 PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`) |
