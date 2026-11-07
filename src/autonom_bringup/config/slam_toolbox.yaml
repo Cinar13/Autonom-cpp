@@ -63,7 +63,9 @@ slam_toolbox:
     minimum_distance_penalty: 0.5
     use_response_expansion: true
     min_pass_through: 2
-    # Fraction of scans through a cell that must hit it for the cell to stay occupied (was 0.1). Walls are hit
-    # by almost every scan; an obstacle that leaves (other robot, removed box) clears after ~1.5x as many scans
-    # without it as it was seen for. At 0.1 removed obstacles stayed in /map and blocked the loop patrol.
-    occupancy_threshold: 0.4
+    # Fraction of scans through a cell that must hit it for the cell to stay occupied (slam_toolbox default).
+    # 0.4 was tried so removed obstacles cleared faster, but it erased the race arena's 18 mm inner walls (rays
+    # passing beside a thin wall count as misses for its 5 cm cell): only the near-symmetric outer box was left
+    # to match against and the SLAM pose rotated up to ~1 rad. Moving robots no longer need fast clearing here:
+    # the global costmap is live-only and the patrol reuses its last lap while the map is blocked.
+    occupancy_threshold: 0.1
