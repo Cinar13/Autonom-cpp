@@ -3,22 +3,35 @@ loop_patrol:
     map_topic: /map
     global_frame: map
     robot_base_frame: base_footprint
-    waypoint_count: 8
-    clearance: 0.35
-    max_radius: 0.0
-    min_spacing: 0.5
+    # Race arena, ~0.6 m corridors: waypoints 0.13 m off the walls (robot r = 0.15 m).
+    clearance: 0.13
+    min_spacing: 0.3
+    # Lap waypoints every waypoint_spacing metres of driving distance along the track centre line; a closed
+    # ring shorter than min_loop_length is not a lap. The lap is cut at the rear gate (rear_gate_offset),
+    # across at most cut_half_width.
+    waypoint_spacing: 0.4
+    # The arena lap is ~7 m; anything much shorter is a detour, not a lap.
+    min_loop_length: 5.0
+    cut_half_width: 0.6
     free_threshold: 25
-    min_known_area: 4.0
+    min_known_area: 2.0
     lap_pause: 0.0
     # Send the next lap when this many lap poses remain (continuous driving, no stop at the lap end).
     preempt_poses_remaining: 1
     retry_period: 3.0
-    # Lap direction (AC-5.1). auto: the direction the robot faces at the start; it never crosses the start
-    # line backwards (team rule, docs/06 section 4). clockwise | counterclockwise force a direction and
-    # are refused when they run against the start heading.
+    # Lap direction (AC-5.1). Laps always follow the direction the robot faces at the start (it never turns
+    # back, docs/06 section 4). clockwise | counterclockwise only add a check: a lap in the other orientation is
+    # refused (robot placed the wrong way round).
     direction: auto
-    start_line_half_width: 1.0
+    start_line_half_width: 0.4
     # Exploration goals stay within this distance so Nav2 never takes the shorter way back round the track.
-    max_exploration_distance: 2.5
+    max_exploration_distance: 0.6
+    # Keepout wall across the track this far behind the robot (global costmap KeepoutFilter): Nav2 can never
+    # plan a path that turns back. Moves forward every rear_gate_update_distance of forward travel.
+    rear_gate_enabled: true
+    rear_gate_offset: 0.25
+    rear_gate_update_distance: 0.3
+    rear_gate_mask_topic: /rear_gate_mask
+    behind_drop_radius: 0.5
     wait_for_race_start: true
     race_state_topic: /race/state

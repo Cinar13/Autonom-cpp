@@ -1,18 +1,24 @@
-"""Derive a closed patrol loop from the reachable free space of a growing occupancy grid.
+"""Plan race laps and exploration goals on a growing occupancy grid.
 
-The explored region is split into equal angular sectors around its centroid; in each sector the
-reachable cell farthest from the centroid (while keeping `clearance` from obstacles and unknown
-space) becomes a waypoint. As slam_toolbox expands the map, successive laps grow outward.
-A loop is only returned once every sector holds a waypoint, i.e. the explored space surrounds the centroid
-(a closed track); on a partial map such as one L-shaped corridor a "loop" would need U-turns in the corridor.
-Until then `plan_exploration_goal` pushes the map frontier out ahead of the robot.
+A lap follows the track itself, so it works for any closed track shape (the Fibonacci arena winds into a U and
+around a divider, which no angular ordering around a centre point can follow):
+
+1. Cut the track with a line just behind the robot (the same line as the rear gate).
+2. Flood the safe free space forward from the robot; every cell gets its driving distance from the cut.
+3. The track is a closed ring only if the flood reaches the far side of the cut the long way round; that
+   distance is the lap length.
+4. Every `waypoint_spacing` metres of driving distance, the cell farthest from the walls is a waypoint (track
+   centre line). Laps therefore always run in the robot's direction of travel.
+
+Until the ring is closed, `plan_exploration_goal` pushes the map frontier out ahead of the robot.
 """
 
 from dataclasses import dataclass
 import math
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import numpy as np
+from scipy.ndimage import distance_transform_edt
 
 Waypoint = Tuple[float, float, float]
 
@@ -26,18 +32,17 @@ class GridInfo:
 
 @dataclass(frozen=True)
 class LoopSettings:
-    waypoint_count: int = 8
+    # Waypoints keep this distance from walls and unknown space (about half the track width minus a margin).
     clearance: float = 0.35
-    max_radius: float = 0.0
     min_spacing: float = 0.5
     free_threshold: int = 25
-    clockwise: bool = False
-    # Waypoint per sector: the cell at the median distance from the centroid (track centre line, so the
-    # shortest path between waypoints may cut the inside of corners) instead of the farthest one (outer wall).
-    centre_line: bool = True
-    # A loop is only planned once the reachable track encloses its centroid (closed ring). Otherwise a partial
-    # map wrapped around the centroid (U or L shape) yields a "loop" that turns 180 degrees at a dead end.
-    require_closed_track: bool = True
+    # Driving distance between lap waypoints.
+    waypoint_spacing: float = 1.0
+    # Shorter "rings" are not a lap (e.g. a loop around a small obstacle in an open area).
+    min_loop_length: float = 2.0
+    # The lap is cut this far behind the robot, across at most +-cut_half_width.
+    cut_offset: float = 0.3
+    cut_half_width: float = 1.5
     # Exploration goals farther than this are ignored (0 = unlimited). On a closed track a far goal can be
     # closer the other way round, and Nav2 would then drive back through the start point.
     max_exploration_distance: float = 0.0
@@ -70,89 +75,145 @@ def reachable_from(safe: np.ndarray, seed: Tuple[int, int]) -> np.ndarray:
         reached = grown
 
 
+def driving_distance(passable: np.ndarray, seed: Tuple[int, int]) -> np.ndarray:
+    """4-connected wavefront steps from `seed` through `passable` cells; -1 where unreachable."""
+    distance = np.full(passable.shape, -1, dtype=np.int32)
+    distance[seed] = 0
+    reached = np.zeros_like(passable)
+    reached[seed] = True
+    frontier = reached.copy()
+    step = 0
+    while frontier.any():
+        step += 1
+        grown = _dilate(frontier, 1, border=False) & passable & ~reached
+        distance[grown] = step
+        reached |= grown
+        frontier = grown
+    return distance
+
+
 def plan_loop(
-    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings
+    grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], heading: float, settings: LoopSettings
 ) -> List[Waypoint]:
-    """Return loop waypoints (x, y, yaw) in the map frame, starting nearest the robot; empty if none fit."""
-    if settings.waypoint_count < 3:
+    """Lap waypoints (x, y, yaw) along the closed track ahead of the robot; empty until the ring is closed."""
+    if grid.ndim != 2 or info.resolution <= 0.0 or settings.waypoint_spacing <= 0.0:
         return []
-    mask = _reachable_mask(grid, info, robot_xy, settings)
-    if mask is None:
+    res = info.resolution
+    clearance_cells = max(1, math.ceil(settings.clearance / res))
+    safe = safe_free_space(grid, clearance_cells, settings.free_threshold)
+    cut, sealed = _rear_gate(grid, info, robot_xy, heading, settings.cut_offset, settings.cut_half_width, 50)
+    if not sealed:
+        return []  # an open cut end would let a short detour count as a lap
+    passable = safe.copy()
+    for row, col in cut:
+        passable[row, col] = False
+    seed = _nearest_cell(passable, info, robot_xy)
+    if seed is None:
         return []
-    xs, ys = _cell_centres(mask, info)
-    centre_x, centre_y = float(xs.mean()), float(ys.mean())
-    if settings.require_closed_track and not encloses(mask, _cell_of(info, (centre_x, centre_y))):
-        return []
-    radii = np.hypot(xs - centre_x, ys - centre_y)
-    angles = np.arctan2(ys - centre_y, xs - centre_x)
+    distance = driving_distance(passable, seed)
 
-    if settings.max_radius > 0.0:
-        radii = np.where(radii <= settings.max_radius, radii, -1.0)
+    # The cell straight behind the cut, in the robot's own corridor: reached only by driving the whole ring.
+    # (A sideways window could reach across a wall into a neighbouring part of the track.)
+    cos_h, sin_h = math.cos(heading), math.sin(heading)
+    back = settings.cut_offset + 0.1
+    target = _nearest_cell(passable, info, (robot_xy[0] - back * cos_h, robot_xy[1] - back * sin_h))
+    if target is None or distance[target] < 0:
+        return []
+    tx, ty = info.origin_x + (target[1] + 0.5) * res, info.origin_y + (target[0] + 0.5) * res
+    if (tx - robot_xy[0]) * cos_h + (ty - robot_xy[1]) * sin_h > -settings.cut_offset:
+        return []  # nearest passable cell is not behind the cut (cut sealed nothing)
+    lap_steps = int(distance[target])
+    if lap_steps * res < settings.min_loop_length:
+        return []
 
-    sectors = np.minimum(
-        ((angles + math.pi) / (2.0 * math.pi) * settings.waypoint_count).astype(int), settings.waypoint_count - 1
-    )
+    xs, ys = _cell_centres(np.ones_like(safe), info)
+    xs, ys = xs.reshape(safe.shape), ys.reshape(safe.shape)
+
+    free = (grid >= 0) & (grid < settings.free_threshold)
+    wall_distance = distance_transform_edt(free)
+    spacing_steps = max(2, int(round(settings.waypoint_spacing / res)))
     points: List[Tuple[float, float]] = []
-    for sector in range(settings.waypoint_count):
-        in_sector = np.flatnonzero((sectors == sector) & (radii >= 0.0))
-        if in_sector.size == 0:
-            return []
-        sector_radii = radii[in_sector]
-        target = float(np.median(sector_radii)) if settings.centre_line else float(sector_radii.max())
-        best = int(in_sector[np.argmin(np.abs(sector_radii - target))])
-        points.append((float(xs[best]), float(ys[best])))
-
-    points = _enforce_spacing(points, settings.min_spacing)
-    if len(points) < 3:
+    for level in range(spacing_steps, lap_steps - spacing_steps // 2 + 1, spacing_steps):
+        band = (distance >= level - 1) & (distance <= level + 1)
+        if not band.any():
+            continue
+        flat = int(np.argmax(np.where(band, wall_distance, -1.0)))
+        row, col = divmod(flat, safe.shape[1])
+        points.append((float(xs[row, col]), float(ys[row, col])))
+    if len(points) < 2:
         return []
-    # Sectors run counter-clockwise around the centroid; laps only score in the designated direction (AC-5.1).
-    if settings.clockwise:
-        points.reverse()
+    waypoints = []
+    for i, (x, y) in enumerate(points):
+        nx, ny = points[i + 1] if i + 1 < len(points) else robot_xy
+        waypoints.append((x, y, math.atan2(ny - y, nx - x)))
+    return waypoints
 
-    start = min(range(len(points)), key=lambda i: math.dist(points[i], robot_xy))
-    points = points[start:] + points[:start]
-    return [
-        (x, y, math.atan2(points[(i + 1) % len(points)][1] - y, points[(i + 1) % len(points)][0] - x))
-        for i, (x, y) in enumerate(points)
-    ]
+
+def loop_is_clockwise(waypoints: List[Waypoint]) -> bool:
+    """Orientation of the lap polygon (negative signed area = clockwise)."""
+    points = [(x, y) for x, y, _ in waypoints]
+    area = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]))
+    return area < 0.0
 
 
 def plan_exploration_goal(
     grid: np.ndarray, info: GridInfo, robot_xy: Tuple[float, float], settings: LoopSettings,
     heading: Optional[float] = None,
 ) -> Optional[Waypoint]:
-    """Farthest reachable safe cell from the robot, facing away from it; None if nothing is `min_spacing` away.
+    """Next exploration goal; None if nothing is `min_spacing` away.
 
-    Safe cells keep `clearance` from unknown space, so the farthest one sits just inside the map frontier.
-    With `heading` (robot yaw), cells in front of the robot are preferred so it keeps driving forward along
-    the track instead of turning back in a corridor; cells behind are used only when nothing ahead qualifies.
+    Safe cells keep `clearance` from unknown space, so goals stay inside the known map.
+    Without `heading`: the farthest reachable safe cell (straight-line distance).
+    With `heading` (direction of travel): the track is cut behind the robot and the goal is the track centre
+    line `max_exploration_distance` ahead in *driving* distance (or the frontier, if nearer): among cells at that
+    driving distance, the one farthest from walls and unknown space. Following the centre line, the robot takes
+    hairpins smoothly instead of driving into corner pockets, and a cell that is close in a straight line but
+    only reachable by turning back never wins.
     """
-    reachable = _reachable_points(grid, info, robot_xy, settings)
-    if reachable is None:
+    if grid.ndim != 2 or info.resolution <= 0.0:
         return None
-    xs, ys = reachable
-    distances = np.hypot(xs - robot_xy[0], ys - robot_xy[1])
-    if settings.max_exploration_distance > 0.0:
-        distances = np.where(distances <= settings.max_exploration_distance, distances, -1.0)
+    res = info.resolution
+    clearance_cells = max(1, math.ceil(settings.clearance / res))
+    safe = safe_free_space(grid, clearance_cells, settings.free_threshold)
     if heading is not None:
-        ahead = (xs - robot_xy[0]) * math.cos(heading) + (ys - robot_xy[1]) * math.sin(heading) > 0.0
-        if np.any(ahead & (distances >= settings.min_spacing)):
-            distances = np.where(ahead, distances, -1.0)
-    best = int(np.argmax(distances))
-    if distances[best] < settings.min_spacing:
+        for row, col in rear_gate_cells(grid, info, robot_xy, heading, offset=settings.cut_offset,
+                                        max_half_width=settings.cut_half_width):
+            safe[row, col] = False
+    seed = _nearest_cell(safe, info, robot_xy)
+    if seed is None:
         return None
+    if heading is None:
+        reachable = reachable_from(safe, seed)
+        xs, ys = _cell_centres(reachable, info)
+        distances = np.hypot(xs - robot_xy[0], ys - robot_xy[1])
+        if settings.max_exploration_distance > 0.0:
+            distances = np.where(distances <= settings.max_exploration_distance, distances, -1.0)
+        if distances.size == 0:
+            return None
+        best = int(np.argmax(distances))
+        if distances[best] < settings.min_spacing:
+            return None
+        x, y = float(xs[best]), float(ys[best])
+        return x, y, math.atan2(y - robot_xy[1], x - robot_xy[0])
+
+    steps = driving_distance(safe, seed)
+    rows, cols = np.nonzero(steps >= 0)
+    xs = info.origin_x + (cols + 0.5) * res
+    ys = info.origin_y + (rows + 0.5) * res
+    # Cells behind the cut but still connected (an unsealed cut end) are never goals.
+    ahead = (xs - robot_xy[0]) * math.cos(heading) + (ys - robot_xy[1]) * math.sin(heading) > 0.0
+    reach = np.where(ahead, steps[rows, cols], -1)
+    if reach.max() * res < settings.min_spacing:
+        return None
+    target = int(reach.max())
+    if settings.max_exploration_distance > 0.0:
+        target = min(target, int(round(settings.max_exploration_distance / res)))
+    band = np.abs(reach - target) <= 1
+    known_free = (grid >= 0) & (grid < settings.free_threshold)
+    clearance = distance_transform_edt(known_free)[rows, cols]
+    best = int(np.argmax(np.where(band, clearance, -1.0)))
     x, y = float(xs[best]), float(ys[best])
     return x, y, math.atan2(y - robot_xy[1], x - robot_xy[0])
-
-
-def encloses(region: np.ndarray, cell: Tuple[int, int]) -> bool:
-    """Whether `region` (4-connected) fully surrounds `cell`: the cell is outside the region and a
-    4-connected flood fill through the rest of the grid cannot reach the grid border from it."""
-    row, col = cell
-    if not (0 <= row < region.shape[0] and 0 <= col < region.shape[1]) or region[row, col]:
-        return False
-    outside = reachable_from(~region, (row, col))
-    return not (outside[0, :].any() or outside[-1, :].any() or outside[:, 0].any() or outside[:, -1].any())
 
 
 def _reachable_mask(
@@ -197,16 +258,6 @@ def _nearest_cell(mask: np.ndarray, info: GridInfo, xy: Tuple[float, float]) -> 
     return int(rows[nearest]), int(cols[nearest])
 
 
-def _enforce_spacing(points: List[Tuple[float, float]], min_spacing: float) -> List[Tuple[float, float]]:
-    spaced: List[Tuple[float, float]] = []
-    for point in points:
-        if not spaced or math.dist(point, spaced[-1]) >= min_spacing:
-            spaced.append(point)
-    if len(spaced) > 1 and math.dist(spaced[0], spaced[-1]) < min_spacing:
-        spaced.pop()
-    return spaced
-
-
 @dataclass(frozen=True)
 class StartLine:
     """Line through the start position, perpendicular to the start heading (the race direction)."""
@@ -236,12 +287,15 @@ class StartLineMonitor:
         self.half_width = half_width
         self.depth = depth
         self.margin = margin
+        # Optional wall-aware zone test (see start_zone_mask): positions inside the box but behind a wall,
+        # e.g. a parallel passage on the other side of a thin wall, are not part of the start zone.
+        self.zone: Optional[Callable[[Tuple[float, float]], bool]] = None
         self._side: Optional[int] = 1
 
     def update(self, xy: Tuple[float, float]) -> int:
         """+1 for a forward crossing (lap completed), -1 for a reverse crossing, 0 otherwise."""
         along, lateral = self.line.local(xy)
-        if abs(lateral) > self.half_width or abs(along) > self.depth:
+        if abs(lateral) > self.half_width or abs(along) > self.depth or (self.zone is not None and not self.zone(xy)):
             self._side = None
             return 0
         if abs(along) <= self.margin:
@@ -253,16 +307,6 @@ class StartLineMonitor:
         return side
 
 
-def loop_follows_heading(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float) -> bool:
-    """Whether the loop, near `xy`, runs in the direction of `heading`."""
-    if len(waypoints) < 3:
-        return True
-    points = [(x, y) for x, y, _ in waypoints]
-    i = min(range(len(points)), key=lambda k: math.dist(points[k], xy))
-    after, before = points[(i + 1) % len(points)], points[i - 1]
-    return (after[0] - before[0]) * math.cos(heading) + (after[1] - before[1]) * math.sin(heading) >= 0.0
-
-
 def start_ahead(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float) -> List[Waypoint]:
     """Rotate the loop so its first waypoint lies ahead of the robot, never just behind it."""
     if len(waypoints) < 2:
@@ -272,3 +316,85 @@ def start_ahead(waypoints: List[Waypoint], xy: Tuple[float, float], heading: flo
     if (first[0] - xy[0]) * cos_h + (first[1] - xy[1]) * sin_h >= 0.0:
         return waypoints
     return waypoints[1:] + waypoints[:1]
+
+
+def rear_gate_cells(
+    grid: np.ndarray, info: GridInfo, xy: Tuple[float, float], direction: float,
+    offset: float = 0.4, max_half_width: float = 1.5, occupied_threshold: int = 50,
+) -> List[Tuple[int, int]]:
+    return _rear_gate(grid, info, xy, direction, offset, max_half_width, occupied_threshold)[0]
+
+
+def _rear_gate(
+    grid: np.ndarray, info: GridInfo, xy: Tuple[float, float], direction: float,
+    offset: float, max_half_width: float, occupied_threshold: int,
+) -> Tuple[List[Tuple[int, int]], bool]:
+    """Cells of a wall across the track `offset` metres behind the robot (opposite to `direction`).
+
+    The line runs perpendicular to `direction` from the gate centre in both directions until it reaches an
+    occupied cell (the track walls) or `max_half_width`; each sample also marks its four neighbours, so the
+    wall stays sealed against 4- and 8-connected planners. Fed to the global costmap as a keepout zone, it cuts
+    the ring behind the robot: every plan must go forward, so the robot never turns back along the track.
+    """
+    if grid.ndim != 2 or info.resolution <= 0.0:
+        return [], False
+    cos_d, sin_d = math.cos(direction), math.sin(direction)
+    centre = (xy[0] - offset * cos_d, xy[1] - offset * sin_d)
+    step = 0.5 * info.resolution
+    cells = set()
+    walls_hit = 0
+    for side in (1.0, -1.0):
+        distance = 0.0
+        while distance <= max_half_width:
+            px = centre[0] - side * distance * sin_d
+            py = centre[1] + side * distance * cos_d
+            row, col = _cell_of(info, (px, py))
+            if not (0 <= row < grid.shape[0] and 0 <= col < grid.shape[1]):
+                break
+            for d_row, d_col in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+                t_row, t_col = row + d_row, col + d_col
+                if 0 <= t_row < grid.shape[0] and 0 <= t_col < grid.shape[1]:
+                    cells.add((t_row, t_col))
+            if grid[row, col] >= occupied_threshold:
+                walls_hit += 1
+                break
+            distance += step
+    # Sealed: both ends of the line reached a wall, so nothing can drive around the cut.
+    return sorted(cells), walls_hit == 2
+
+
+def drop_behind(waypoints: List[Waypoint], xy: Tuple[float, float], heading: float, radius: float) -> List[Waypoint]:
+    """Remove waypoints within `radius` behind the robot: they sit between it and the rear gate and could only be
+    reached by turning back."""
+    cos_h, sin_h = math.cos(heading), math.sin(heading)
+    return [w for w in waypoints
+            if not ((w[0] - xy[0]) * cos_h + (w[1] - xy[1]) * sin_h < 0.0 and math.dist(w[:2], xy) < radius)]
+
+
+def start_zone_mask(
+    grid: np.ndarray, info: GridInfo, line: StartLine, half_width: float, depth: float, free_threshold: int = 25,
+) -> Optional[np.ndarray]:
+    """Free cells of the start box that connect to the start position without crossing a wall.
+
+    On a compact track a parallel passage can run within the start box on the other side of a thin wall (the
+    Fibonacci arena's U interior runs 0.3-0.4 m from the start line, westwards); without this test, driving
+    through it reads as a reverse crossing.
+    """
+    if grid.ndim != 2 or info.resolution <= 0.0:
+        return None
+    xs, ys = _cell_centres(np.ones(grid.shape, dtype=bool), info)
+    xs, ys = xs.reshape(grid.shape), ys.reshape(grid.shape)
+    along, lateral = line.local((xs, ys))
+    box = (np.abs(along) <= depth) & (np.abs(lateral) <= half_width)
+    free = (grid >= 0) & (grid < free_threshold) & box
+    seed = _nearest_cell(free, info, (line.x, line.y))
+    if seed is None:
+        return None
+    return reachable_from(free, seed)
+
+
+def mask_lookup(mask: np.ndarray, info: GridInfo) -> Callable[[Tuple[float, float]], bool]:
+    def inside(xy: Tuple[float, float]) -> bool:
+        row, col = _cell_of(info, xy)
+        return 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1] and bool(mask[row, col])
+    return inside

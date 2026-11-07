@@ -1,0 +1,39 @@
+# Overlay on autonom_bringup/config/nav2.yaml and loop_patrol.yaml (the real robot on the Fibonacci race arena)
+# for the TurtleBot3 Burger on the same arena: smaller body (r = 0.105 m) and v_max = 0.22 m/s.
+controller_server:
+  ros__parameters:
+    general_goal_checker:
+      xy_goal_tolerance: 0.15
+    FollowPath:
+      desired_linear_vel: 0.22
+      rotate_to_heading_angular_vel: 1.5
+      lookahead_dist: 0.35
+      min_lookahead_dist: 0.25
+      max_lookahead_dist: 0.45
+      lookahead_time: 1.5
+      regulated_linear_scaling_min_radius: 0.3
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      robot_radius: 0.11
+      inflation_layer:
+        inflation_radius: 0.18
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      robot_radius: 0.11
+      inflation_layer:
+        inflation_radius: 0.18
+
+velocity_smoother:
+  ros__parameters:
+    max_velocity: [0.22, 0.0, 2.0]
+    min_velocity: [-0.15, 0.0, -2.0]
+
+loop_patrol:
+  ros__parameters:
+    # Corridors ~0.6 m: waypoints 0.12 m off the walls keep a 0.36 m centre band.
+    clearance: 0.12
+    rear_gate_offset: 0.2
