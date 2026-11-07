@@ -1,0 +1,22 @@
+# Overlay on autonom_bringup/config/nav2.yaml and loop_patrol.yaml (the real robot on the Fibonacci race arena at
+# 0.6 m/s) for urdf/turtlebot3_burger_fast.urdf.xacro: the TurtleBot3 body (r = 0.105 m) at the real robot's speed,
+# Lower soft margins (0.14 m inflation, 0.10 m clearance, 0.3 s collision horizon) were tried: the plan hugged the
+# walls, RPP's collision check stalled the robot (177 warnings) and three laps in a row failed. Kept at these.
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      robot_radius: 0.11
+      inflation_layer:
+        inflation_radius: 0.18
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      robot_radius: 0.11
+      inflation_layer:
+        inflation_radius: 0.18
+
+loop_patrol:
+  ros__parameters:
+    clearance: 0.12
+    rear_gate_offset: 0.2

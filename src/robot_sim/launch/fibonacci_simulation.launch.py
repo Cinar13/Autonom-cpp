@@ -2,6 +2,8 @@
 
 robot:=autonom   the real robot's model (autonom_description) with the base Nav2/patrol tuning (0.6 m/s)
 robot:=tb3       the TurtleBot3 Burger placeholder with config/nav2_fibonacci.yaml (default)
+robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot3_burger_fast.urdf.xacro,
+                 config/nav2_fibonacci_fast.yaml)
 
 The robot spawns in the middle of the bottom corridor facing +x; laps run in the direction it faces at the
 start, so set yaw:=3.1416 to race the other way round. Any tb3_simulation argument can be added.
@@ -15,7 +17,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Opaq
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
-ROBOTS = ('tb3', 'autonom')
+ROBOTS = ('tb3', 'tb3_fast', 'autonom')
 
 
 def _simulation(context):
@@ -26,6 +28,9 @@ def _simulation(context):
     if robot == 'autonom':
         urdf = os.path.join(get_package_share_directory('autonom_description'), 'urdf', 'autonom.urdf.xacro')
         overlay = ''  # the base configuration is tuned for this robot
+    elif robot == 'tb3_fast':
+        urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_fast.urdf.xacro')
+        overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci_fast.yaml')
     else:
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_sim.urdf.xacro')
         overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci.yaml')
