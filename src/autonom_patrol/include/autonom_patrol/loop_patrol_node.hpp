@@ -111,6 +111,7 @@ private:
   int lap_{0};
   std::optional<Point> gate_anchor_;
   std::optional<double> gate_direction_;
+  std::vector<Point> gate_trail_;  // forward positions, oldest first; the rear gate sits on this path
   std::optional<double> speed_;
   std::vector<double> accel_;  // last max_accel the smoother accepted
   std::optional<rclcpp::Time> fast_at_;  // node clock (sim time in Gazebo): race speed from here on

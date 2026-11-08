@@ -521,3 +521,41 @@ TEST(TrackPlanner, NoCornerMeansNoApproachCap)
   EXPECT_TRUE(std::all_of(d.begin(), d.end(), [](double x) { return std::isinf(x); }));
   EXPECT_FALSE(std::isinf(autonom_patrol::distanceToNextCorner(line, 0.35)[0]));
 }
+
+TEST(TrackPlanner, TrailPointBehindFollowsTheCornerBack)
+{
+  // Drove +x along the bottom straight, then turned up (+y): 0.25 m back along the path is still on the straight.
+  const std::vector<autonom_patrol::Point> trail{{0.0, 0.0}, {0.2, 0.0}, {0.4, 0.0}, {0.6, 0.0}, {0.6, 0.2}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 0.25);
+  ASSERT_TRUE(behind.has_value());
+  EXPECT_NEAR(behind->first.x, 0.55, 1e-9);
+  EXPECT_NEAR(behind->first.y, 0.0, 1e-9);
+  EXPECT_NEAR(behind->second, 0.0, 1e-9);  // across the straight's direction, so the gate cuts that corridor
+  // Within the newest segment: the exit direction.
+  const auto near = autonom_patrol::trailPointBehind(trail, 0.1);
+  ASSERT_TRUE(near.has_value());
+  EXPECT_NEAR(near->first.y, 0.1, 1e-9);
+  EXPECT_NEAR(near->second, M_PI / 2.0, 1e-9);
+}
+
+TEST(TrackPlanner, TrailPointBehindStopsAtTheOldestPoint)
+{
+  const std::vector<autonom_patrol::Point> trail{{0.0, 0.0}, {0.2, 0.0}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 1.0);
+  ASSERT_TRUE(behind.has_value());
+  EXPECT_NEAR(behind->first.x, 0.0, 1e-9);
+  EXPECT_FALSE(autonom_patrol::trailPointBehind({{0.0, 0.0}}, 0.25).has_value());
+  EXPECT_FALSE(autonom_patrol::trailPointBehind({{0.0, 0.0}, {0.0, 0.0}}, 0.25).has_value());
+}
+
+TEST(TrackPlanner, GateOnTheTrailSealsTheCorridorTheRobotCameFrom)
+{
+  // The ring track's bottom straight: the gate placed from the trail point behind the robot, across the travel
+  // direction there, reaches both walls.
+  const autonom_patrol::Grid g = ring();
+  const std::vector<autonom_patrol::Point> trail{{0.0, -4.0}, {0.5, -4.0}, {1.0, -4.0}, {1.2, -4.0}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 0.4);
+  ASSERT_TRUE(behind.has_value());
+  const auto gate = autonom_patrol::rearGate(g, behind->first, behind->second, 0.0, 1.5);
+  EXPECT_TRUE(gate.sealed);
+}

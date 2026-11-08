@@ -100,6 +100,13 @@ struct Gate
 Gate rearGate(
   const Grid & grid, Point xy, double direction, double offset, double max_half_width, int occupied_threshold = 50);
 
+/// Point `distance` metres back along the robot's travelled path (`trail`, oldest first, newest = the robot) and
+/// the direction of travel there. Following the path, not the current heading, keeps a gate behind the robot across
+/// the corridor it came from even in a corner: a line perpendicular to the exit direction would run along the
+/// entry corridor and leave the way back open. nullopt with fewer than 2 points; the oldest point (and its
+/// segment's direction) when the trail is shorter than `distance`.
+std::optional<std::pair<Point, double>> trailPointBehind(const std::vector<Point> & trail, double distance);
+
 /// Lap waypoints along the closed track ahead of the robot (driving-distance ordering, centre line); empty until
 /// the ring is closed, i.e. the far side of a sealed cut behind the robot is reached the long way round.
 std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, const LoopSettings & settings);

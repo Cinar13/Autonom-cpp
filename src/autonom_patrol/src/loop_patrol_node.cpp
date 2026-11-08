@@ -264,6 +264,8 @@ void LoopPatrolNode::planAndSend()
     start_monitor_.emplace(*start_line_, start_line_half_width_);
     gate_anchor_ = robot;
     gate_direction_ = pose->yaw;
+    // Seed the trail with a point behind the start so the first gate also lies on the (straight) start path.
+    gate_trail_ = {Point{robot.x - std::cos(pose->yaw), robot.y - std::sin(pose->yaw)}, robot};
     publishRearGate();
     RCLCPP_INFO(get_logger(), "Start line at (%.2f, %.2f), race heading %.2f rad", pose->x, pose->y, pose->yaw);
   }
@@ -655,6 +657,11 @@ void LoopPatrolNode::updateRearGate(const Waypoint & pose)
   }
   gate_anchor_ = Point{pose.x, pose.y};
   gate_direction_ = direction;
+  gate_trail_.push_back(*gate_anchor_);
+  constexpr std::size_t kTrailPoints = 32;  // far more than the gate offset needs
+  if (gate_trail_.size() > kTrailPoints) {
+    gate_trail_.erase(gate_trail_.begin());
+  }
   publishRearGate();
 }
 
@@ -672,8 +679,15 @@ void LoopPatrolNode::publishRearGate()
   mask.header.stamp = get_clock()->now();
   mask.info = map_->info;
   mask.data.assign(grid->data.size(), 0);
-  for (const auto & cell : rearGate(*grid, *gate_anchor_, *gate_direction_, settings_.cut_offset,
-      settings_.cut_half_width).cells)
+  // On the travelled path cut_offset behind the robot, across the direction of travel there (see trailPointBehind).
+  Point centre{gate_anchor_->x - settings_.cut_offset * std::cos(*gate_direction_),
+    gate_anchor_->y - settings_.cut_offset * std::sin(*gate_direction_)};
+  double across = *gate_direction_;
+  if (const auto behind = trailPointBehind(gate_trail_, settings_.cut_offset)) {
+    centre = behind->first;
+    across = behind->second;
+  }
+  for (const auto & cell : rearGate(*grid, centre, across, 0.0, settings_.cut_half_width).cells)
   {
     mask.data[grid->index(cell.row, cell.col)] = 100;
   }

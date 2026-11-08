@@ -482,6 +482,26 @@ Mask startZoneMask(const Grid & grid, const StartLine & line, double half_width,
   return reachableFrom(free, grid.width, grid.height, *seed);
 }
 
+std::optional<std::pair<Point, double>> trailPointBehind(const std::vector<Point> & trail, double distance)
+{
+  if (trail.size() < 2) {
+    return std::nullopt;
+  }
+  double remaining = std::max(distance, 0.0);
+  for (std::size_t i = trail.size() - 1; i > 0; --i) {
+    const Point & ahead = trail[i];
+    const Point & behind = trail[i - 1];
+    const double length = std::hypot(ahead.x - behind.x, ahead.y - behind.y);
+    const double direction = std::atan2(ahead.y - behind.y, ahead.x - behind.x);
+    if (length > 0.0 && (remaining <= length || i == 1)) {
+      const double t = std::min(remaining / length, 1.0);
+      return std::pair{Point{ahead.x - t * (ahead.x - behind.x), ahead.y - t * (ahead.y - behind.y)}, direction};
+    }
+    remaining -= length;
+  }
+  return std::nullopt;  // every segment has zero length
+}
+
 std::vector<bool> shortStraightSegments(const std::vector<Waypoint> & lap, double corner_angle, double max_length)
 {
   const std::size_t n = lap.size();
