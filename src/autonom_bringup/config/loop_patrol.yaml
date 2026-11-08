@@ -27,6 +27,18 @@ loop_patrol:
     race_max_accel: [1.5, 0.0, 5.0]
     # Fast mode (race_speed, race_max_accel) starts this long (s) after the map is finished (the map freeze).
     race_speed_delay: 10.0
+    # Fast mode cruise-speed caps per lap section (0 = off; only caps below race_speed matter). The lap is split
+    # into straights where it turns by more than corner_angle (rad) at a waypoint.
+    # - straights shorter than short_straight_length (m, corner to corner): short_straight_speed (m/s), no room to
+    #   reach race_speed and brake again for the next corner;
+    # - the last corner_approach_distance (m) before every corner: corner_approach_speed (m/s), braking before the
+    #   turn instead of overshooting it. A cap only slows a robot that is faster than it, so at 1.0 the robot
+    #   brakes for corners only when it is going over 1 m/s (1.2 brakes less).
+    corner_angle: 0.35
+    short_straight_length: 0.8
+    short_straight_speed: 1.0
+    corner_approach_distance: 0.5
+    corner_approach_speed: 1.0
     retry_period: 3.0
     # Lap direction (AC-5.1). Laps always follow the direction the robot faces at the start (it never turns
     # back, docs/06 section 4). clockwise | counterclockwise only add a check: a lap in the other orientation is

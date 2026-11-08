@@ -118,6 +118,32 @@ std::vector<Waypoint> startAhead(std::vector<Waypoint> waypoints, Point xy, doub
 /// Remove waypoints within `radius` behind the robot (between it and the rear gate).
 std::vector<Waypoint> dropBehind(const std::vector<Waypoint> & waypoints, Point xy, double heading, double radius);
 
+/// For the closed lap (segment i = waypoint i -> i + 1, the last one back to waypoint 0): true for segments of a
+/// straight shorter than `max_length` [m]. The lap is split into straights at waypoints where it turns by more
+/// than `corner_angle` [rad]; inside a corner every segment counts as its own (short) straight. A lap with no
+/// corner is one straight. Fewer than 3 waypoints: all false.
+std::vector<bool> shortStraightSegments(const std::vector<Waypoint> & lap, double corner_angle, double max_length);
+
+/// For the closed lap: distance along the track from the end of segment i to the next waypoint where the lap turns
+/// by more than `corner_angle` (0 when segment i ends at one). Infinite for a lap without corners.
+std::vector<double> distanceToNextCorner(const std::vector<Waypoint> & lap, double corner_angle);
+
+struct SectionSpeedSettings
+{
+  double race_speed{0.0};
+  double corner_angle{0.35};          // [rad] turn at a waypoint that makes it a corner
+  double short_straight_length{0.0};  // [m] straights shorter than this ...
+  double short_straight_speed{0.0};   // ... are capped at this [m/s] (0: off)
+  double corner_approach_distance{0.0};  // [m] segments ending this close before a corner ...
+  double corner_approach_speed{0.0};     // ... are capped at this [m/s] (0: off)
+};
+
+/// Cruise speed per lap segment: race_speed, capped on short straights and before corners.
+std::vector<double> sectionSpeeds(const std::vector<Waypoint> & lap, const SectionSpeedSettings & settings);
+
+/// Segment of the closed lap nearest to `p` (index of its first waypoint); nullopt for fewer than 2 waypoints.
+std::optional<std::size_t> nearestSegment(const std::vector<Waypoint> & lap, Point p);
+
 /// Line through the start position, perpendicular to the start heading (the race direction).
 struct StartLine
 {

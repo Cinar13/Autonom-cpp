@@ -58,6 +58,14 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   // (localize_after_laps), or the first lap found when the map is never frozen. Laps before that run at the
   // exploration speed and acceleration.
   race_speed_delay_ = declare_parameter<double>("race_speed_delay", 0.0);
+  // Fast mode caps the cruise speed on straights shorter than short_straight_length (corner to corner: no room to
+  // reach race_speed and brake again) and on the last corner_approach_distance before each corner, so the robot
+  // brakes before the turn instead of overshooting it.
+  sections_.corner_angle = declare_parameter<double>("corner_angle", 0.35);
+  sections_.short_straight_length = declare_parameter<double>("short_straight_length", 0.0);
+  sections_.short_straight_speed = declare_parameter<double>("short_straight_speed", 0.0);
+  sections_.corner_approach_distance = declare_parameter<double>("corner_approach_distance", 0.0);
+  sections_.corner_approach_speed = declare_parameter<double>("corner_approach_speed", 0.0);
   for (const auto * accel : {&exploration_max_accel_, &race_max_accel_}) {
     if (!accel->empty() && accel->size() != 3) {
       throw std::invalid_argument("exploration_max_accel / race_max_accel must be empty or [x, y, theta]");
@@ -149,6 +157,9 @@ void LoopPatrolNode::onTick()
   }
   if (fast_at_ && !fast_ && kind_ == Kind::kLoop) {
     updateDrivingProfile();
+  }
+  if (fast_ && kind_ == Kind::kLoop) {
+    updateSectionSpeed();
   }
   if (phase_ == Phase::kActive) {
     watchActive();
@@ -470,7 +481,35 @@ void LoopPatrolNode::cancelGoal()
   ++goal_seq_;  // ignore results of the cancelled goal
 }
 
-void LoopPatrolNode::setSpeed(double speed)
+void LoopPatrolNode::updateSectionSpeed()
+{
+  if (last_loop_.empty() || race_speed_ <= 0.0) {
+    return;
+  }
+  if (section_loop_.size() != last_loop_.size() ||
+    !std::equal(section_loop_.begin(), section_loop_.end(), last_loop_.begin(),
+      [](const Waypoint & a, const Waypoint & b) { return a.x == b.x && a.y == b.y; }))
+  {
+    section_loop_ = last_loop_;
+    sections_.race_speed = race_speed_;
+    section_speed_ = sectionSpeeds(section_loop_, sections_);
+    const auto capped = std::count_if(section_speed_.begin(), section_speed_.end(),
+      [this](double v) { return v < race_speed_; });
+    RCLCPP_INFO(get_logger(),
+      "Lap sections: %ld of %zu segments capped (short straights < %.2f m: %.2f m/s, %.2f m before corners: %.2f m/s)",
+      static_cast<long>(capped), section_speed_.size(), sections_.short_straight_length, sections_.short_straight_speed,
+      sections_.corner_approach_distance, sections_.corner_approach_speed);
+  }
+  const auto pose = robotPose();
+  if (!pose) {
+    return;
+  }
+  const auto segment = nearestSegment(section_loop_, {pose->x, pose->y});
+  // setSpeed returns at once when the speed is already set, and retries after a failed parameter call.
+  setSpeed(segment ? section_speed_[*segment] : race_speed_, false);
+}
+
+void LoopPatrolNode::setSpeed(double speed, bool log)
 {
   // Path follower cruise speed (RPP FollowPath.desired_linear_vel), set only when it changes.
   if (speed <= 0.0 || (speed_ && *speed_ == speed)) {
@@ -483,10 +522,14 @@ void LoopPatrolNode::setSpeed(double speed)
   speed_ = speed;
   controller_params_->set_parameters(
     {rclcpp::Parameter("FollowPath.desired_linear_vel", speed)},
-    [this, speed](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
+    [this, speed, log](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
       const auto results = future.get();
       if (std::all_of(results.begin(), results.end(), [](const auto & r) { return r.successful; })) {
-        RCLCPP_INFO(get_logger(), "Cruise speed %.2f m/s", speed);
+        if (log) {
+          RCLCPP_INFO(get_logger(), "Cruise speed %.2f m/s", speed);
+        } else {
+          RCLCPP_DEBUG(get_logger(), "Cruise speed %.2f m/s", speed);
+        }
       } else {
         speed_.reset();
         RCLCPP_WARN(get_logger(), "Could not set cruise speed %.2f m/s", speed);

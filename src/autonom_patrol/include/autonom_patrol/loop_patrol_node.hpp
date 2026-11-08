@@ -51,10 +51,11 @@ private:
   void sendLoop(const std::vector<Waypoint> & waypoints);
   void sendExploration(const Waypoint & goal);
   void cancelGoal();
-  void setSpeed(double speed);
+  void setSpeed(double speed, bool log = true);
   void setAcceleration(const std::vector<double> & max_accel);
   void startFastModeTimer();
   void updateDrivingProfile();
+  void updateSectionSpeed();
   void watchStartLine(const Waypoint & pose);
   void updateRearGate(const Waypoint & pose);
   void publishRearGate();
@@ -73,6 +74,7 @@ private:
   std::vector<double> exploration_max_accel_;  // velocity_smoother max_accel [x, y, theta]; empty = untouched
   std::vector<double> race_max_accel_;
   double race_speed_delay_{0.0};
+  SectionSpeedSettings sections_;  // race_speed filled in at use
   bool rear_gate_enabled_{true};
   double rear_gate_step_{0.3};
   double behind_drop_radius_{2.0};
@@ -104,6 +106,8 @@ private:
   int reverse_crossings_{0};
   std::optional<rclcpp::Time> last_crossing_;
   std::vector<Waypoint> last_loop_;
+  std::vector<Waypoint> section_loop_;  // lap the section flags were computed for
+  std::vector<double> section_speed_;
   int lap_{0};
   std::optional<Point> gate_anchor_;
   std::optional<double> gate_direction_;
