@@ -3,9 +3,9 @@
 
   <!-- sim:=true adds the Gazebo Harmonic systems so this model can replace the TurtleBot3 placeholder. -->
   <xacro:arg name="sim" default="false"/>
-  <!-- Gazebo DiffDrive limits (sim only). The motors allow 20 rad/s x 0.0325 m = 0.65 m/s, so the speed cap never
-       goes above that; fibonacci_simulation.launch.py may raise the turn rate and acceleration. -->
-  <xacro:arg name="gz_max_velocity" default="0.65"/>
+  <!-- Gazebo DiffDrive limits (sim only). The motors allow 430 rpm = 45.03 rad/s x 0.0325 m = 1.46 m/s, so the speed
+       cap never goes above that; fibonacci_simulation.launch.py may raise the turn rate and acceleration. -->
+  <xacro:arg name="gz_max_velocity" default="1.46"/>
   <xacro:arg name="gz_max_angular_velocity" default="3.0"/>
   <xacro:arg name="gz_max_acceleration" default="1.0"/>
 
