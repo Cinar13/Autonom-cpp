@@ -39,7 +39,9 @@ motor_driver:
 
 wheel_odometry:
   ros__parameters:
-    ticks_per_revolution: 1320
+    # 98 CPR encoder on the back of each motor x 14:1 gearbox (430 rpm at the output) = 1372 counts per wheel
+    # revolution. The simulation's sim_wheel_odometry_node uses this value too.
+    ticks_per_revolution: 1372
     publish_frequency_hz: 50.0
     publish_tf: false
     odom_frame_id: "odom"

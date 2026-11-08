@@ -9,7 +9,7 @@
 #   scripts/start_sim.sh yaw:=3.1416           added, e.g. race the other way round
 #
 # Options (empty / Enter keeps the configured value):
-#   --mapping-speed, --speed (--race-speed)    0.1-1.0 m/s (robot:=autonom up to 0.65, its motors' limit)
+#   --mapping-speed, --speed (--race-speed)    0.1-1.5 m/s (robot:=autonom up to 0.65, its motors' limit)
 #   --mapping-accel, --race-accel              0.1-3.0 m/s^2 (configured 0.5 / 1.5)
 #   --turn-speed                               0.5-5.0 rad/s (configured 3.0; tb3 2.0)
 # Above 0.6 m/s the Nav2 tuning is untested. Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
@@ -69,8 +69,8 @@ for arg in "${launch_args[@]}"; do
   [[ "$arg" == robot:=* ]] && robot="${arg#robot:=}"
 done
 case "$robot" in
-  tb3) max_speed=1.0 default_mapping=0.22 default_race=0.22 default_turn=2.0 ;;
-  tb3_fast) max_speed=1.0 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
+  tb3) max_speed=1.5 default_mapping=0.22 default_race=0.22 default_turn=2.0 ;;
+  tb3_fast) max_speed=1.5 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
   autonom) max_speed=0.65 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
   *) echo "Unknown robot '$robot' (tb3, tb3_fast, autonom)." >&2; exit 1 ;;
 esac

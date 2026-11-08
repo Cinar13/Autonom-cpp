@@ -6,7 +6,7 @@ robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot
                  config/nav2_fibonacci_fast.yaml)
 
 Driving overrides (empty keeps the configured values):
-  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.0 m/s (autonom: up to 0.65, its
+  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 0.65, its
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
@@ -34,8 +34,8 @@ ROBOTS = ('tb3', 'tb3_fast', 'autonom')
 # Per robot: the configured Nav2 velocity_smoother limits, the Gazebo DiffDrive limits of its model, and the highest
 # cruise speed a user may ask for (the real robot's motors stop at 0.65 m/s).
 LIMITS = {
-    'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.0},
-    'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.0},
+    'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.5},
+    'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.5},
     'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 3.0, 'max_speed': 0.65},
 }
 MIN_SPEED = 0.1
@@ -110,9 +110,13 @@ def _simulation(context):
     robot = LaunchConfiguration('robot').perform(context)
     if robot not in ROBOTS:
         raise ValueError(f"robot must be one of {ROBOTS}, got '{robot}'")
+    wheels = {}  # tb3_simulation defaults: the TurtleBot3's wheels
     if robot == 'autonom':
         urdf = os.path.join(get_package_share_directory('autonom_description'), 'urdf', 'autonom.urdf.xacro')
         overlay = ''  # the base configuration is tuned for this robot
+        # Keep in sync with autonom.urdf.xacro and autonom_hardware hardware.yaml.
+        wheels = {'wheel_radius': '0.0325', 'wheel_separation': '0.17',
+                  'left_wheel_joint': 'left_wheel_joint', 'right_wheel_joint': 'right_wheel_joint'}
     elif robot == 'tb3_fast':
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_fast.urdf.xacro')
         overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci_fast.yaml')
@@ -132,6 +136,7 @@ def _simulation(context):
         'yaw': LaunchConfiguration('yaw'),
         'use_imu': LaunchConfiguration('use_imu'),
         'use_rf2o': LaunchConfiguration('use_rf2o'),
+        **wheels,
     }
     return [IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(sim_share, 'launch', 'tb3_simulation.launch.py')),

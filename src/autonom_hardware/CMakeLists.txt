@@ -26,6 +26,7 @@ add_library(${PROJECT_NAME}_core SHARED
   src/quadrature_encoder.cpp
   src/pid_controller.cpp
   src/diff_drive_kinematics.cpp
+  src/encoder_model.cpp
 )
 target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -36,6 +37,7 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC PkgConfig::GPIOD pthread)
 add_library(${PROJECT_NAME}_nodes SHARED
   src/motor_driver_node.cpp
   src/wheel_odometry_node.cpp
+  src/sim_wheel_odometry_node.cpp
 )
 target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${PROJECT_NAME}_core
@@ -55,6 +57,10 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::WheelOdometryNode"
   EXECUTABLE wheel_odometry_node
 )
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::SimWheelOdometryNode"
+  EXECUTABLE sim_wheel_odometry_node
+)
 
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
   LIBRARY DESTINATION lib
@@ -70,6 +76,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_diff_drive_kinematics ${PROJECT_NAME}_core)
   ament_add_gtest(test_pid_controller test/test_pid_controller.cpp)
   target_link_libraries(test_pid_controller ${PROJECT_NAME}_core)
+  ament_add_gtest(test_encoder_model test/test_encoder_model.cpp)
+  target_link_libraries(test_encoder_model ${PROJECT_NAME}_core)
 endif()
 
 ament_package()

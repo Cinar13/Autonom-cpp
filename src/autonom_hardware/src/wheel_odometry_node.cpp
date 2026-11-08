@@ -38,7 +38,7 @@ WheelOdometryNode::WheelOdometryNode(const rclcpp::NodeOptions & options)
   const auto wheel_separation =
     declareParameter<double>(*this, "wheel_separation", 0.17, "Distance between wheel contact points [m]");
   const auto ticks_per_revolution = declareParameter<std::int64_t>(
-    *this, "ticks_per_revolution", 1320, "Encoder counts per wheel revolution after x4 decoding (incl. gearbox)");
+    *this, "ticks_per_revolution", 1372, "Encoder counts per wheel revolution after x4 decoding (incl. gearbox)");
   const auto publish_frequency =
     declareParameter<double>(*this, "publish_frequency_hz", 50.0, "Odometry and joint state publish rate [Hz]");
   const auto publish_tf = declareParameter<bool>(

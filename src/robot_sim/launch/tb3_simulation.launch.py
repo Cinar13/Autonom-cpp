@@ -77,6 +77,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'auto_start', default_value='true',
             description='Send the race start signal on launch (false: call /race/start yourself)'),
+        DeclareLaunchArgument('wheel_radius', default_value='0.033', description='Sim robot wheel radius [m]'),
+        DeclareLaunchArgument('wheel_separation', default_value='0.160', description='Sim robot wheel separation [m]'),
+        DeclareLaunchArgument('left_wheel_joint', default_value='wheel_left_joint', description='Left wheel joint'),
+        DeclareLaunchArgument('right_wheel_joint', default_value='wheel_right_joint', description='Right wheel joint'),
         DeclareLaunchArgument('x', default_value='0.0', description='Spawn x [m]'),
         DeclareLaunchArgument('y', default_value='-4.7', description='Spawn y [m] (on the circuit2 track)'),
         DeclareLaunchArgument('yaw', default_value='-1.5708', description='Spawn yaw [rad]'),
@@ -119,13 +123,24 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Same EKF input contract as the real robot: wheel odometry with covariance on /wheel/odom.
-    wheel_odom_relay = Node(
-        package='autonom_localization',
-        executable='odometry_covariance_relay',
-        name='wheel_odom_covariance_relay',
-        parameters=[os.path.join(bringup_share, 'config', 'odometry_relays.yaml'), SIM_TIME],
-        remappings=[('odom_in', '/odom'), ('odom_out', '/wheel/odom')],
+    # Same EKF input contract as the real robot: /wheel/odom from encoder counts. The simulated wheel joint angles
+    # are counted with the real encoders' resolution (autonom_hardware hardware.yaml ticks_per_revolution: 98 CPR x
+    # 14:1 = 1372) and integrated exactly like the robot's wheel_odometry node, with its covariances.
+    wheel_odometry = Node(
+        package='autonom_hardware',
+        executable='sim_wheel_odometry_node',
+        name='wheel_odometry',
+        parameters=[
+            os.path.join(get_package_share_directory('autonom_hardware'), 'config', 'hardware.yaml'),
+            {
+                'wheel_radius': ParameterValue(LaunchConfiguration('wheel_radius'), value_type=float),
+                'wheel_separation': ParameterValue(LaunchConfiguration('wheel_separation'), value_type=float),
+                'left_joint_name': LaunchConfiguration('left_wheel_joint'),
+                'right_joint_name': LaunchConfiguration('right_wheel_joint'),
+            },
+            SIM_TIME,
+        ],
+        remappings=[('joint_states', '/joint_states'), ('wheel/odom', '/wheel/odom')],
         output='screen',
     )
 
@@ -157,7 +172,7 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         bridge,
-        wheel_odom_relay,
+        wheel_odometry,
         autonomy,
         rviz,
     ])
