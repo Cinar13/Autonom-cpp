@@ -18,6 +18,15 @@ loop_patrol:
     lap_pause: 0.0
     # Send the next lap when this many lap poses remain (continuous driving, no stop at the lap end).
     preempt_poses_remaining: 1
+    # Map slowly, race fast (m/s): the mapping lap at full speed overshot hairpins into corner pockets.
+    exploration_speed: 0.3
+    race_speed: 0.6
+    # Acceleration limits (velocity_smoother max_accel [x m/s^2, y, theta rad/s^2]): gentle while mapping, then
+    # back to nav2.yaml's velocity_smoother values for the race.
+    exploration_max_accel: [0.5, 0.0, 2.0]
+    race_max_accel: [1.5, 0.0, 5.0]
+    # Fast mode (race_speed, race_max_accel) starts this long (s) after the map is finished (the map freeze).
+    race_speed_delay: 10.0
     retry_period: 3.0
     # Lap direction (AC-5.1). Laps always follow the direction the robot faces at the start (it never turns
     # back, docs/06 section 4). clockwise | counterclockwise only add a check: a lap in the other orientation is
@@ -30,8 +39,12 @@ loop_patrol:
     # plan a path that turns back. Moves forward every rear_gate_update_distance of forward travel.
     rear_gate_enabled: true
     rear_gate_offset: 0.25
-    rear_gate_update_distance: 0.3
+    rear_gate_update_distance: 0.2
     rear_gate_mask_topic: /rear_gate_mask
     behind_drop_radius: 0.5
+    # Phase 2 (launch argument localize_after_mapping): freeze the map at the first forward start-line crossing
+    # after the lap is found; slam_toolbox then only scan-matches against it (docs/06: it still mapped the loop).
+    localize_after_laps: 1
+    localization_mode_service: /slam_toolbox/set_localization_mode
     wait_for_race_start: true
     race_state_topic: /race/state

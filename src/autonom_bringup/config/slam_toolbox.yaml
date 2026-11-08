@@ -55,15 +55,23 @@ slam_toolbox:
     loop_search_space_smear_deviation: 0.03
 
     distance_variance_penalty: 0.5
-    angle_variance_penalty: 1.0
+    # Heading penalty: response *= max(1 - 0.2 * dyaw^2 / angle_variance_penalty, minimum_angle_penalty), dyaw =
+    # matched yaw - odometry (gyro + wheels) yaw. At the default 1.0 / 0.9 a 0.05 rad deviation cost 0.05 %, so in
+    # the arena's round hairpins (scans look alike when rotated about the curve) the matcher slid in yaw: the first
+    # hairpin was mapped rotated by ~0.2 rad with odometry within 0.01 rad of ground truth, and the frozen map kept
+    # the bend (SLAM yaw error up to 0.47 rad every lap). 0.001 / 0.5: 0.05 rad costs 50 %. Measured (150 s, ground
+    # truth): SLAM yaw error max 0.47 -> 0.12 rad, position max 0.39 -> 0.08 m, collision stalls 148 -> 22.
+    angle_variance_penalty: 0.001
     fine_search_angle_offset: 0.00349
     coarse_search_angle_offset: 0.349
     coarse_angle_resolution: 0.0349
-    minimum_angle_penalty: 0.9
+    minimum_angle_penalty: 0.5
     minimum_distance_penalty: 0.5
     use_response_expansion: true
     min_pass_through: 2
-    # Fraction of scans through a cell that must hit it for the cell to stay occupied (was 0.1). Walls are hit
-    # by almost every scan; an obstacle that leaves (other robot, removed box) clears after ~1.5x as many scans
-    # without it as it was seen for. At 0.1 removed obstacles stayed in /map and blocked the loop patrol.
-    occupancy_threshold: 0.4
+    # Fraction of scans through a cell that must hit it for the cell to stay occupied (slam_toolbox default).
+    # 0.4 was tried so removed obstacles cleared faster, but it erased the race arena's 18 mm inner walls (rays
+    # passing beside a thin wall count as misses for its 5 cm cell): only the near-symmetric outer box was left
+    # to match against and the SLAM pose rotated up to ~1 rad. Moving robots no longer need fast clearing here:
+    # the global costmap is live-only and the patrol reuses its last lap while the map is blocked.
+    occupancy_threshold: 0.1

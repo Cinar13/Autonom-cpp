@@ -1,6 +1,6 @@
-# Overlay for ekf.yaml, loaded only when use_imu:=true.
-# Gyro yaw rate is the IMU's most reliable 2D signal; absolute yaw is left out because the
-# magnetometer is unreliable near the motors.
+# Overlay for ekf.yaml, loaded only when use_imu:=true. A 6-axis IMU (gyro + accelerometer) is enough.
+# Fused: gyro yaw rate and forward acceleration ax (gravity removed below). Absolute yaw is left out because the
+# magnetometer is unreliable near the motors; ay is left out because the base cannot move sideways.
 ekf_filter_node:
   ros__parameters:
     imu0: /imu/data
@@ -8,9 +8,11 @@ ekf_filter_node:
                   false, false, false,
                   false, false, false,
                   false, false, true,
-                  false, false, false]
+                  true,  false, false]
     imu0_queue_size: 20
     imu0_differential: false
     imu0_relative: false
     imu0_remove_gravitational_acceleration: true
     imu0_angular_velocity_rejection_threshold: 5.0
+    # Gates accelerometer spikes (bumps, wall contact) out of the forward-speed estimate.
+    imu0_linear_acceleration_rejection_threshold: 3.0

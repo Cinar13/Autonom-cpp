@@ -7,14 +7,15 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <xacro:macro name="gz_diff_drive" params="left_joint right_joint wheel_separation wheel_radius base_frame
-                                            max_linear_velocity max_angular_velocity">
+                                            max_linear_velocity max_angular_velocity
+                                            max_linear_acceleration:=1.0">
     <gazebo>
       <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
         <left_joint>${left_joint}</left_joint>
         <right_joint>${right_joint}</right_joint>
         <wheel_separation>${wheel_separation}</wheel_separation>
         <wheel_radius>${wheel_radius}</wheel_radius>
-        <max_linear_acceleration>1.0</max_linear_acceleration>
+        <max_linear_acceleration>${max_linear_acceleration}</max_linear_acceleration>
         <max_linear_velocity>${max_linear_velocity}</max_linear_velocity>
         <max_angular_velocity>${max_angular_velocity}</max_angular_velocity>
         <topic>cmd_vel</topic>

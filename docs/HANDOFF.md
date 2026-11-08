@@ -23,6 +23,7 @@ Nothing here has run on real hardware. The simulation has run, but a full lap wa
 | `autonom_description` | Custom robot URDF (`autonom.urdf.xacro`, `sim:=true` adds Gazebo plugins) + `gz_plugins.xacro` macros, incl. `gz_rplidar_s3` |
 | `autonom_bringup` | `bringup` = `hardware` + `autonomy` launches; EKF / SLAM / Nav2 / CycloneDDS / RViz config; `loop_patrol.py` + `loop_planner.py` (7 pytest tests) |
 | `robot_sim` | `tb3_simulation.launch.py`, `circuit2_harmonic.sdf`, `bridge.yaml`, `nav2_sim.yaml`, vendored `Circuit_ql_2` model |
+| `autonom_patrol` | C++ loop patrol (branch `optimised`): `track_planner` library + `LoopPatrolNode` component (`loop_patrol` executable); 26 gtests |
 | `autonom_race` | C++ `RaceStartGateNode` + ROS-free `StartGate` state machine (IDLE → COUNTDOWN → RACING / STOPPED); 7 gtests |
 | `turtlebot3_description` | Vendored Burger-only copy (ROBOTIS jazzy `0c0be84`, Apache-2.0) |
 | `rf2o_laser_odometry`, `sllidar_ros2` | Git submodules, unmodified |
@@ -33,7 +34,9 @@ Nothing here has run on real hardware. The simulation has run, but a full lap wa
 real: encoders -> wheel_odometry -> /wheel/odom                                                        |
 sim:  Gazebo /odom -> covariance relay -> /wheel/odom ---------------------------------------------- +--> EKF -> /odometry/filtered
                         [use_imu]  BNO055 or Gazebo IMU -> /imu/data ------------------------------------+    + TF odom->base_footprint
-/scan -> slam_toolbox -> /map + TF map->odom -> Nav2 <- loop_patrol
+EKF inputs: wheels vx + vy (= 0) + vyaw, rf2o vx only, IMU vyaw + ax (all velocities / accelerations, no poses)
+/scan -> slam_toolbox (maps, then localizes only once loop_patrol freezes the map) -> /map + TF map->odom -> Nav2 <- loop_patrol
+loop_patrol -> RPP desired_linear_vel + velocity_smoother max_accel (mapping profile, fast mode 10 s after the freeze)
 /scan -> scan_speckle_filter -> /scan_filtered -> Nav2 costmaps
 Nav2 -> /cmd_vel_smoothed -> race_start_gate -> /cmd_vel -> motor_driver (real) or Gazebo DiffDrive (sim)
 race_start_gate -> /race/state (latched) -> loop_patrol sends goals only while RACING
@@ -61,10 +64,20 @@ race_start_gate -> /race/state (latched) -> loop_patrol sends goals only while R
 | Real robot at 0.6 m/s on the race arena | The base `nav2.yaml` / `loop_patrol.yaml` are now tuned for the real robot (r = 0.15 m) on the Fibonacci arena at 0.6 m/s: short speed-scaled lookahead (0.3–0.6 m), braking for hairpins (min radius 0.6 m), 0.5 s collision horizon, 0.25 m soft margin, 8 × 8 m global costmap, arena patrol values. `robot_sim/config/nav2_sim.yaml` restores the circuit2 values for the TurtleBot3; `nav2_fibonacci.yaml` is the TurtleBot3 on the arena. `fibonacci_simulation.launch.py robot:=autonom` races the real robot's model (Gazebo cap raised to 0.65 m/s). A TurtleBot3 with its Gazebo limits temporarily raised (not committed) lapped the arena in 16.2 s / 17.8 s with this tuning. |
 | Fast TurtleBot3 (`robot:=tb3_fast`) | `urdf/turtlebot3_burger_fast.urdf.xacro` (Gazebo limits 0.65 m/s, 4 rad/s) + `config/nav2_fibonacci_fast.yaml` (TurtleBot3 body on the base 0.6 m/s tuning). Lower soft margins (0.14 m inflation, 0.10 m clearance, 0.3 s collision horizon) made the plan hug the walls: 177 RPP "collision ahead" stalls and three failed laps in a row; reverted to 0.18 m / 0.12 m / 0.5 s. |
 | Arena sims fuse gyro + rf2o by default | `fibonacci_simulation.launch.py` now defaults to `use_imu:=true use_rf2o:=true`. 3-minute race, `robot:=tb3_fast`: odometry error mean 0.06 m / max 0.17 m (wheels only at 0.6 m/s: up to 0.35 m / 1 rad), 5 laps (16.7, 16.1, 69.0, 20.2 s), 21 collision stalls (was 177). The 69 s lap was SLAM losing consistency; under investigation. |
-| SLAM pose drift on the arena (open) | Measured against Gazebo ground truth: EKF odometry stays within ~0.1 m over 3 min, but the slam_toolbox pose drifts 0.3–0.7 m within a lap and snaps back at loop closures (no correlation with turning). Tighter scan matching and a 0.025 m map both made it worse and were reverted. A prebuilt map is not allowed (docs/06: slam_toolbox must map). The robot still drives the arena correctly; at 0.6 m/s watch for the lap waypoint count shrinking (map drift). |
+| SLAM pose drift on the arena (fixed) | Cause: slam_toolbox `occupancy_threshold` 0.4 (set for faster obstacle clearing) erased the arena's 18 mm inner walls, leaving only the near-symmetric outer box to match; back at 0.1 the map keeps the U and divider and scan, map and ground truth line up. Earlier measurements, all taken at 0.4: EKF odometry stays within ~0.1 m over 3 min, but the slam_toolbox pose drifts 0.3–0.7 m within a lap and snaps back at loop closures (no correlation with turning). Tighter scan matching and a 0.025 m map both made it worse and were reverted. A prebuilt map is not allowed (docs/06: slam_toolbox must map). The robot still drives the arena correctly; at 0.6 m/s watch for the lap waypoint count shrinking (map drift). |
 | Laps in the designated direction (AC-5.1) | `loop_patrol.direction`: `counterclockwise` (default) or `clockwise`. Set it to the referee's direction before each round. |
+| Loop patrol in C++ (branch `optimised`) | `autonom_patrol`: `track_planner` (pure C++17 port of the planner: safe space, driving distance, Felzenszwalb distance transform, sealed rear gate, laps, exploration, start line / wall-aware zone; 26 gtests) and `LoopPatrolNode` (event-driven 20 Hz state machine, Nav2 action clients, non-blocking speed parameter client, TF on its own thread). Same parameters and log lines as the Python version, which was removed. Race: 7 laps in 3 min (Python 6), patrol CPU 64 % → 7.5 %, stack 346 % → 172 %. |
+| Map slowly, race fast | `loop_patrol` sets RPP `FollowPath.desired_linear_vel` live: `exploration_speed` 0.3 m/s while mapping, `race_speed` 0.6 m/s in fast mode (TurtleBot3 overlays: 0.22 / 0.22). At full speed the mapping lap overshot hairpins into corner pockets and got stuck. Since `f0b02ea` fast mode starts `race_speed_delay` (10 s) after the map freeze, not when the lap is found (see below). |
+| Rear gate follows forward travel | The gate advances when the displacement agrees with the robot's heading (`cos > 0.5`), every 0.2 m. Comparing with the gate's previous direction failed in the hairpins (180° in ~0.5 m) and sent the robot back. |
+| EKF inputs changed (`d37c4a1`, user decisions) | `ekf_imu.yaml` also fuses the IMU's forward acceleration `ax` (6-axis IMU is enough; gravity removed, `imu0_linear_acceleration_rejection_threshold` 3.0; sim accel noise 0.017 m/s²). `ekf_rf2o.yaml` fuses rf2o's `vx` only, not its yaw rate: heading comes from gyro + wheels. Removing rf2o entirely (`use_rf2o:=false`) was measured and is worse: SLAM error up to 1.26 m / ~1.1 rad, 179 collision stalls, 3 failed laps, 1 real reverse crossing. Keep `use_rf2o:=true`. |
+| Map freeze after the mapping lap (`f0b02ea`) | `autonomy.launch.py localize_after_mapping:=true` (default) runs slam_toolbox's `map_and_localization_slam_toolbox_node` (same mapping code path as the async node; still named `slam_toolbox`). At the first forward start-line crossing after a lap is found (`loop_patrol.localize_after_laps` 1), the patrol calls `/slam_toolbox/set_localization_mode` (`std_srvs/SetBool`): from then on scans are only matched against the map built so far (`ProcessLocalization`) and the map stops growing, so rivals cannot warp it. `docs/06` is still met: slam_toolbox mapped the loop, no prebuilt map. Log: `Map frozen: slam_toolbox now localizes by scan matching against it`. Effect: SLAM error stays flat for the rest of the race (0.31–0.39 m max in 5 runs) instead of growing past 1 m. `localize_after_mapping:=false` restores `async_slam_toolbox_node` and mapping all race. |
+| Gentle mapping, delayed fast mode (`f0b02ea`) | `loop_patrol` also sets `velocity_smoother.max_accel` live: `exploration_max_accel` [0.5, 0, 2.0] while mapping, `race_max_accel` [1.5, 0, 5.0] in fast mode (`nav2_sim.yaml`: [1.0, 0, 3.0]). Fast mode starts `race_speed_delay` 10 s (node clock) after the map freeze; laps before that run at the mapping profile. Logs: `Map finished: fast mode in 10.0 s`, then `Fast mode`. Gentler mapping acceleration did not measurably reduce the error that builds up during the mapping lap (0.41 m vs 0.37 m). |
+| Stress test (`f0b02ea`, GUI, ground truth) | Three 3-minute races on the arena: default direction 6 race laps (15.5–25.4 s, 1 failed lap recovered, 133 stalls); reverse (`yaw:=3.1416`) 7 laps (15.7–17.4 s, 0 failures, 26 stalls); 7 cm post 0.2 m off the centre line of the right straight for 30 s after the freeze, 7 laps, passed twice, closest 2 cm, no contact, map error unchanged after removal. 0 reverse crossings in all runs. The patrol's lap count now matches ground truth. |
+| Map rotated at the first hairpin (fixed) | Not a timing problem: measured in sim, every input arrives within ~11 ms of its stamp (scan 11 ms, odometry/EKF < 3 ms, IMU < 1 ms), scans line up with ground truth at a 0.000 s offset even while turning, no slam_toolbox TF/drop warnings, EKF yaw within 0.01 rad of ground truth. Cause: slam_toolbox's heading penalty was effectively off (`angle_variance_penalty` 1.0, `minimum_angle_penalty` 0.9: 0.05 rad off odometry cost 0.05 %), so the matcher slid in yaw in the round hairpins, mapped the first one ~0.2 rad rotated, and the frozen map kept the bend (SLAM yaw error up to 0.47 rad every lap). Now 0.001 / 0.5. 150 s, ground truth: SLAM yaw max 0.47 → 0.12 rad, position max 0.39 → 0.08 m, collision stalls 148 → 22, failed goals 13 → 0. |
 
 Missing: a driver for the physical start button / RC5 IR receiver. It only has to publish `std_msgs/Empty` on `/race/start_signal` (and `/race/stop_signal`); pin and receiver are not in `docs/01`.
+
+Latest race result, findings and the to-do list: **`docs/REPORT.md`**.
 
 ---
 
@@ -136,7 +149,10 @@ For `use_rf2o:=true`, confirm `ros2 param get /ekf_filter_node odom1` returns `/
    - `laser_yaw` in `autonom.urdf.xacro` (LiDAR mounting angle).
 6. **CycloneDDS naming.** `cyclonedds.xml` uses `AUTONOM_WSL_IP` for the base-station peer. On native Ubuntu set it to that machine's LAN IP (the name is just a label). WSL mirrored networking no longer applies.
 
-Harmless log noise you can ignore: RViz `indexed_8bit_image` GLSL link error, Gazebo `Ogre material scripts` warnings (the circuit model's walls render grey), `gz_frame_id ... not defined in SDF`.
+7. **Slow laps and collision stalls in the default (+x) direction.** With the map frozen, races facing +x had 22–25 s laps and 130–200 RPP "collision ahead" stalls; the reverse direction had steady 16 s laps and 26 stalls. Something on the track is tight that way round, probably a hairpin. Find the spot from the ground-truth path, then loosen RPP's braking (`regulated_linear_scaling_min_radius` 0.6) and its wall-distance slowdown (`cost_scaling_dist` 0.2 is always active in 0.6 m corridors). This is also the user's "faster turns" request, not started yet.
+8. **Map error left over from the mapping lap.** The freeze keeps the 0.3–0.4 m error built up during the mapping lap (mostly after ~40 s). Laps still work because the robot localizes consistently against the frozen map; candidates to reduce it: stricter loop-closure matching (`loop_match_minimum_response_*`, `loop_search_maximum_distance` 3.0 on a 2.5 m arena) or smaller `minimum_travel_distance` / `heading`.
+
+Harmless log noise you can ignore: rf2o `Waiting for laser_scans....` (it loops at 20 Hz on a 10 Hz scan), RViz `indexed_8bit_image` GLSL link error, Gazebo `Ogre material scripts` warnings (the circuit model's walls render grey), `gz_frame_id ... not defined in SDF`.
 
 ---
 
@@ -146,7 +162,11 @@ Harmless log noise you can ignore: RViz `indexed_8bit_image` GLSL link error, Ga
 |---|---|
 | EKF is the **only** publisher of `odom->base_footprint`; Gazebo DiffDrive TF is bridged to `/sim/tf`, not `/tf` | Two publishers of one TF edge makes the tree jump between them |
 | Gazebo `/odom` and rf2o odometry pass through `OdometryCovarianceRelay` | Both publish all-zero covariance, which the EKF treats as perfect certainty |
-| EKF fuses **velocities only** (vx, vy=0, vyaw) | Every source drifts in absolute pose; fusing poses gives competing estimates |
+| EKF fuses **velocities only** (vx, vy=0, vyaw), plus the IMU's forward acceleration `ax` | Every source drifts in absolute pose; fusing poses gives competing estimates |
+| rf2o feeds the EKF `vx` only, not its yaw rate | User decision (2026-11-07); heading comes from gyro + wheels. rf2o stays on: without it the map drifted past 1 m |
+| slam_toolbox freezes the map after the mapping lap (`localize_after_mapping`) | Drift stops growing and rivals cannot corrupt the map; slam_toolbox still maps the loop as `docs/06` requires |
+| Simulated LiDAR stays at 10 Hz (not 40–50 Hz) | The real RPLiDAR S3 scans at 10 Hz; a faster sim sensor would give results that do not carry over to the robot |
+| Simulation tests run **with the Gazebo GUI and RViz** | User request; scripted measurement runs too |
 | rf2o and IMU are EKF **overlays** (`ekf_rf2o.yaml`, `ekf_imu.yaml`) | `use_rf2o` / `use_imu` add or remove them cleanly |
 | One `robot_urdf` argument drives both robot_state_publisher and the Gazebo spawn; URDFs get Gazebo plugins from `gz_plugins.xacro` with `sim:=true` | Swapping the robot is a single argument, and every robot shares `bridge.yaml` |
 | Simulated LiDAR = RPLiDAR S3 (3200 samples/rev at 10 Hz = 32 kHz, 0.1125°, 0.05–40 m) | User request; `slam_toolbox.yaml` is shared unchanged with the real robot |
@@ -162,7 +182,8 @@ Harmless log noise you can ignore: RViz `indexed_8bit_image` GLSL link error, Ga
 
 ## 6. Git rules (from `docs/04_git_workflow.md` and the user)
 
-- Work and push only on `not_tested` (or `not_tested/<feature>`). **Never commit or push to `main`.** Push with an explicit refspec: `git push origin not_tested:not_tested`.
+- Work and push only on `not_tested` (or `not_tested/<feature>`) or `optimised`. **Never commit or push to `main`.** Push with an explicit refspec: `git push origin not_tested:not_tested` / `git push origin optimised:optimised`.
+- `optimised` (from `not_tested` at `1711136`, 2026-11-07): CPU optimisations for the Raspberry Pi 5, first the loop patrol ported to C++ (`docs/REPORT.md` to-do 10–12).
 - Identity must match local `git config` (Çınar Öztürk). Set it on the new machine before committing.
 
 ---

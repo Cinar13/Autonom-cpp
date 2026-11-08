@@ -11,6 +11,7 @@ def is_true(context: LaunchContext, argument: str) -> bool:
 
 
 def parameter_files(context: LaunchContext, base, overlay_argument: str) -> List:
-    """Return [base] plus the overlay named by `overlay_argument` when that argument is non-empty."""
-    overlay = LaunchConfiguration(overlay_argument).perform(context).strip()
-    return [base, overlay] if overlay else [base]
+    """Return [base] plus the overlays named by `overlay_argument`: empty, one file, or several separated by
+    commas (later files win)."""
+    overlays = LaunchConfiguration(overlay_argument).perform(context).split(',')
+    return [base] + [overlay.strip() for overlay in overlays if overlay.strip()]

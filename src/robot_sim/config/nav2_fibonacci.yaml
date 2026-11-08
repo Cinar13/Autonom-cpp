@@ -34,6 +34,8 @@ velocity_smoother:
 
 loop_patrol:
   ros__parameters:
+    exploration_speed: 0.22
+    race_speed: 0.22
     # Corridors ~0.6 m: waypoints 0.12 m off the walls keep a 0.36 m centre band.
     clearance: 0.12
     rear_gate_offset: 0.2
