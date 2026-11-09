@@ -72,6 +72,8 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
     }
   }
   const auto controller = declare_parameter<std::string>("controller_server", "controller_server");
+  // Cruise speed parameter of the path follower: RPP desired_linear_vel, MPPI vx_max.
+  speed_parameter_ = declare_parameter<std::string>("speed_parameter", "FollowPath.desired_linear_vel");
   const auto smoother = declare_parameter<std::string>("velocity_smoother", "velocity_smoother");
   // Rear gate: keepout wall across the track behind the robot (global costmap KeepoutFilter), so Nav2 can never
   // plan a path that turns back (docs/06 section 4).
@@ -513,7 +515,7 @@ void LoopPatrolNode::updateSectionSpeed()
 
 void LoopPatrolNode::setSpeed(double speed, bool log)
 {
-  // Path follower cruise speed (RPP FollowPath.desired_linear_vel), set only when it changes.
+  // Path follower cruise speed (speed_parameter), set only when it changes.
   if (speed <= 0.0 || (speed_ && *speed_ == speed)) {
     return;
   }
@@ -523,7 +525,7 @@ void LoopPatrolNode::setSpeed(double speed, bool log)
   }
   speed_ = speed;
   controller_params_->set_parameters(
-    {rclcpp::Parameter("FollowPath.desired_linear_vel", speed)},
+    {rclcpp::Parameter(speed_parameter_, speed)},
     [this, speed, log](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
       const auto results = future.get();
       if (std::all_of(results.begin(), results.end(), [](const auto & r) { return r.successful; })) {

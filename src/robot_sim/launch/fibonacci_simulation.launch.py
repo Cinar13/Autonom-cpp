@@ -10,6 +10,10 @@ Driving overrides (empty keeps the configured values):
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
+  controller:=mppi               Nav2's MPPI controller instead of Regulated Pure Pursuit (config/nav2_mppi.yaml)
+  controller:=graceful           Nav2's Graceful controller (config/nav2_graceful.yaml)
+  planner:=smac                  Smac 2D global planner instead of NavFn (config/nav2_smac.yaml)
+  planner:=thetastar             Theta* any-angle global planner (config/nav2_thetastar.yaml)
 The Nav2 velocity smoother and the Gazebo DiffDrive limits are raised to match.
 
 The EKF fuses the IMU (gyro + accelerometer) and rf2o's forward speed by default (use_imu, use_rf2o): at
@@ -123,6 +127,16 @@ def _simulation(context):
     else:
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_sim.urdf.xacro')
         overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci.yaml')
+    controller = LaunchConfiguration('controller').perform(context)
+    if controller not in ('rpp', 'mppi', 'graceful'):
+        raise ValueError(f"controller must be rpp, mppi or graceful, got '{controller}'")
+    if controller != 'rpp':
+        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', f'nav2_{controller}.yaml')) if p)
+    planner = LaunchConfiguration('planner').perform(context)
+    if planner not in ('navfn', 'smac', 'thetastar'):
+        raise ValueError(f"planner must be navfn, smac or thetastar, got '{planner}'")
+    if planner != 'navfn':
+        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', f'nav2_{planner}.yaml')) if p)
     driving_overlay, xacro_args = _driving_overrides(context, robot)
     if driving_overlay:
         overlay = ','.join(path for path in (overlay, driving_overlay) if path)
@@ -147,6 +161,12 @@ def _simulation(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('robot', default_value='tb3', description=f'Robot model: {" | ".join(ROBOTS)}'),
+        DeclareLaunchArgument(
+            'controller', default_value='rpp',
+            description='Path follower: rpp (Regulated Pure Pursuit) | mppi (Model Predictive Path Integral) | graceful'),
+        DeclareLaunchArgument(
+            'planner', default_value='navfn',
+            description='Global planner: navfn (shortest grid path) | smac (Smac 2D, smoothed grid path) | thetastar (any-angle)'),
         DeclareLaunchArgument('x', default_value='0.0'),
         DeclareLaunchArgument('y', default_value='-0.735'),
         DeclareLaunchArgument('yaw', default_value='0.0'),

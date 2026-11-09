@@ -65,6 +65,7 @@ private:
   // Parameters
   std::string global_frame_;
   std::string robot_frame_;
+  std::string speed_parameter_;  // controller parameter that holds the cruise speed
   double min_known_area_{4.0};
   double lap_pause_{0.0};
   double retry_period_{3.0};

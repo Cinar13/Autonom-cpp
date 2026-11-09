@@ -4,6 +4,20 @@ Branches `not_tested` and `optimised` (latest results first). Everything below w
 (RTX 4050) unless marked otherwise.
 Nothing has run on the real robot yet. Details per change are in `docs/HANDOFF.md`, section 1.
 
+## Result: Nav2 mode comparison (branch `optimised`, 2026-11-09)
+
+`robot:=tb3_fast`, Gazebo GUI, 95 s after fast mode, one run each (details: `docs/SESSION_2026-11-09.md`).
+
+| Mode | 1.2 m/s laps | failed | 0.6 m/s laps | failed | Note |
+|---|---|---|---|---|---|
+| **RPP + Theta\*** (`planner:=thetastar`) | **8** (11.1–16.5 s) | 0 | **6** (15.2–19.8 s) | 0 | fastest; closer to walls at 0.6 m/s |
+| RPP + NavFn (default) | 6 (11.8–17.1 s) | 0 | 5 (16.9–19.4 s) | 0 | 0 stalls and never < 0.17 m from a wall at 0.6 m/s |
+| RPP + Smac 2D | 6 (11.2–16.9 s) | 0 | 4 (16.8–34.7 s) | 2 | many collision stalls |
+| MPPI + NavFn | 5 (17.9–21.1 s) | 0 | — | | best clearance, top speed 0.66 m/s |
+| Graceful + any planner | 2–4 | 0–3 | 2–3 | 0–1 | slow in every turn |
+
+0 reverse crossings in every run after the BT fix (`RemovePassedGoals` every tick instead of at 1 Hz).
+
 ## Result (branch `optimised`, map frozen after the mapping lap, `f0b02ea`)
 
 Fibonacci arena, `robot:=tb3_fast`, 3-minute races with the Gazebo GUI, lap times and map error from Gazebo
