@@ -13,10 +13,13 @@ Nothing has run on the real robot yet. Details per change are in `docs/HANDOFF.m
 | **RPP + Theta\*** (`planner:=thetastar`) | **8** (11.1–16.5 s) | 0 | **6** (15.2–19.8 s) | 0 | fastest; closer to walls at 0.6 m/s |
 | RPP + NavFn (default) | 6 (11.8–17.1 s) | 0 | 5 (16.9–19.4 s) | 0 | 0 stalls and never < 0.17 m from a wall at 0.6 m/s |
 | RPP + Smac 2D | 6 (11.2–16.9 s) | 0 | 4 (16.8–34.7 s) | 2 | many collision stalls |
-| MPPI + NavFn | 5 (17.9–21.1 s) | 0 | — | | best clearance, top speed 0.66 m/s |
+| RPP mapping -> MPPI race (`controller:=mppi`) | **8** (11.0–16.4 s, two runs) | 0 | — | | never stopped; 0.1–0.2 % inside the 0.13 m wall margin |
 | Graceful + any planner | 2–4 | 0–3 | 2–3 | 0–1 | slow in every turn |
 
 0 reverse crossings in every run after the BT fix (`RemovePassedGoals` every tick instead of at 1 Hz).
+
+Theoretical best lap (optimal racing line, perfect tracking; `docs/SESSION_2026-11-09.md` section 5,
+`docs/racing_line/`): 5.27 s for the sim TurtleBot at 1.2 m/s, 5.25 s for the real robot. Best measured: 10.3 s.
 
 ## Result (branch `optimised`, map frozen after the mapping lap, `f0b02ea`)
 

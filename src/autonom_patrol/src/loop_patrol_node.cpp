@@ -74,6 +74,15 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   const auto controller = declare_parameter<std::string>("controller_server", "controller_server");
   // Cruise speed parameter of the path follower: RPP desired_linear_vel, MPPI vx_max.
   speed_parameter_ = declare_parameter<std::string>("speed_parameter", "FollowPath.desired_linear_vel");
+  // Fast mode can switch Nav2 to another path follower (e.g. map with RPP, race with MPPI): race_controller is the
+  // controller_server plugin name sent to the BT's ControllerSelector, race_speed_parameter its cruise-speed
+  // parameter. Empty race_controller: keep one controller.
+  race_controller_ = declare_parameter<std::string>("race_controller", "");
+  race_speed_parameter_ = declare_parameter<std::string>("race_speed_parameter", "");
+  if (race_speed_parameter_.empty()) {
+    race_speed_parameter_ = speed_parameter_;
+  }
+  const auto selector_topic = declare_parameter<std::string>("controller_selector_topic", "/controller_selector");
   const auto smoother = declare_parameter<std::string>("velocity_smoother", "velocity_smoother");
   // Rear gate: keepout wall across the track behind the robot (global costmap KeepoutFilter), so Nav2 can never
   // plan a path that turns back (docs/06 section 4).
@@ -119,6 +128,7 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
       race_state_ = msg.data;
     });
   gate_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(gate_topic, latchedQos());
+  controller_selector_pub_ = create_publisher<std_msgs::msg::String>(selector_topic, latchedQos());
   loop_client_ = rclcpp_action::create_client<NavigateThroughPoses>(this, "navigate_through_poses");
   explore_client_ = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
   controller_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, controller);
@@ -524,8 +534,9 @@ void LoopPatrolNode::setSpeed(double speed, bool log)
     return;
   }
   speed_ = speed;
+  const auto & parameter = fast_ && !race_controller_.empty() ? race_speed_parameter_ : speed_parameter_;
   controller_params_->set_parameters(
-    {rclcpp::Parameter(speed_parameter_, speed)},
+    {rclcpp::Parameter(parameter, speed)},
     [this, speed, log](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
       const auto results = future.get();
       if (std::all_of(results.begin(), results.end(), [](const auto & r) { return r.successful; })) {
@@ -556,6 +567,13 @@ void LoopPatrolNode::updateDrivingProfile()
     if (!fast_) {
       fast_ = true;
       RCLCPP_INFO(get_logger(), "Fast mode");
+      if (!race_controller_.empty()) {
+        std_msgs::msg::String msg;
+        msg.data = race_controller_;
+        controller_selector_pub_->publish(msg);
+        speed_.reset();  // the race speed goes to race_speed_parameter now
+        RCLCPP_INFO(get_logger(), "Race controller: %s", race_controller_.c_str());
+      }
     }
     setSpeed(race_speed_);
     setAcceleration(race_max_accel_);

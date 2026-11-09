@@ -66,6 +66,9 @@ private:
   std::string global_frame_;
   std::string robot_frame_;
   std::string speed_parameter_;  // controller parameter that holds the cruise speed
+  // Optional second path follower for fast mode (Nav2 ControllerSelector), and its cruise-speed parameter.
+  std::string race_controller_;
+  std::string race_speed_parameter_;
   double min_known_area_{4.0};
   double lap_pause_{0.0};
   double retry_period_{3.0};
@@ -135,6 +138,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr race_state_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gate_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr controller_selector_pub_;
   rclcpp_action::Client<NavigateThroughPoses>::SharedPtr loop_client_;
   rclcpp_action::Client<NavigateToPose>::SharedPtr explore_client_;
   std::shared_ptr<rclcpp::AsyncParametersClient> controller_params_;
