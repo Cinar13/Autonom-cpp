@@ -13,7 +13,7 @@ Nothing has run on the real robot yet. Details per change are in `docs/HANDOFF.m
 | **RPP + Theta\*** (`planner:=thetastar`) | **8** (11.1–16.5 s) | 0 | **6** (15.2–19.8 s) | 0 | fastest; closer to walls at 0.6 m/s |
 | RPP + NavFn (default) | 6 (11.8–17.1 s) | 0 | 5 (16.9–19.4 s) | 0 | 0 stalls and never < 0.17 m from a wall at 0.6 m/s |
 | RPP + Smac 2D | 6 (11.2–16.9 s) | 0 | 4 (16.8–34.7 s) | 2 | many collision stalls |
-| RPP mapping -> MPPI race (`controller:=mppi`) | **8** (11.0–16.4 s, two runs) | 0 | — | | never stopped; 0.1–0.2 % inside the 0.13 m wall margin |
+| RPP mapping -> MPPI race (`controller:=mppi`) | **8** (11.0–16.4 s, two runs) | 0 | **7** (12.5–17.2 s) | 0 | never stopped; 0.1–0.2 % inside the 0.13 m wall margin; best at 0.6 m/s |
 | Graceful + any planner | 2–4 | 0–3 | 2–3 | 0–1 | slow in every turn |
 
 0 reverse crossings in every run after the BT fix (`RemovePassedGoals` every tick instead of at 1 Hz).

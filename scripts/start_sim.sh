@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Start the race simulation: Gazebo Harmonic (GUI) + RViz + the full autonomy stack on the Fibonacci arena.
 #
-#   scripts/start_sim.sh                       asks for the speeds, then whether to change accelerations / turn speed
+#   scripts/start_sim.sh                       asks for the speeds and the Nav2 mode, then whether to change
+#                                              accelerations / turn speed
 #   scripts/start_sim.sh --speed 0.8           race laps at 0.8 m/s, no questions
+#   scripts/start_sim.sh --speed 1.2 --controller mppi --planner thetastar
 #   scripts/start_sim.sh --mapping-speed 0.25 --speed 0.5 --race-accel 2.0 --turn-speed 4.0
 #   scripts/start_sim.sh --defaults            configured values, no questions
 #   scripts/start_sim.sh robot:=autonom        the real robot's model; any fibonacci_simulation argument can be
@@ -12,10 +14,15 @@
 #   --mapping-speed, --speed (--race-speed)    0.1-1.5 m/s (robot:=autonom up to 1.46, its motors' 430 rpm)
 #   --mapping-accel, --race-accel              0.1-3.0 m/s^2 (configured 0.5 / 1.5)
 #   --turn-speed                               0.5-5.0 rad/s (configured 3.0; tb3 2.0)
-# Above 0.6 m/s the Nav2 tuning is untested. Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
+#   --controller                               rpp (default) | mppi (RPP maps, MPPI races) | graceful (sim only)
+#   --planner                                  navfn (default) | smac | thetastar
+# Nav2 modes measured in docs/SESSION_2026-11-09.md: MPPI races fastest at 0.6 m/s, MPPI and RPP + Theta* at 1.2 m/s.
+# Above 0.6 m/s only robot:=tb3_fast is tested (up to 1.25 m/s). Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
 set -euo pipefail
 
 declare -A value=([mapping_speed]="" [race_speed]="" [mapping_accel]="" [race_accel]="" [turn_speed]="")
+controller=""
+planner=""
 ask=yes
 launch_args=()
 while [[ $# -gt 0 ]]; do
@@ -25,8 +32,10 @@ while [[ $# -gt 0 ]]; do
     --mapping-accel) value[mapping_accel]="$2"; ask=no; shift 2 ;;
     --race-accel) value[race_accel]="$2"; ask=no; shift 2 ;;
     --turn-speed) value[turn_speed]="$2"; ask=no; shift 2 ;;
+    --controller) controller="$2"; shift 2 ;;
+    --planner) planner="$2"; shift 2 ;;
     --defaults) ask=no; shift ;;
-    -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
     *) launch_args+=("$1"); shift ;;
   esac
 done
@@ -99,9 +108,29 @@ ask_value() {  # ask_value <name>: prints the answer ('' = keep the configured v
   done
 }
 
+for arg in "${launch_args[@]}"; do  # controller:= / planner:= given the launch way count too
+  [[ "$arg" == controller:=* ]] && controller="${arg#controller:=}"
+  [[ "$arg" == planner:=* ]] && planner="${arg#planner:=}"
+done
+ask_choice() {  # ask_choice <label> <default> <choices...>: prints the answer
+  local label="$1" default="$2" answer options
+  shift 2
+  options="$(printf ' | %s' "$@")"
+  while true; do
+    read -rp "${label} (${options:3}) [Enter: ${default}]: " answer
+    answer="${answer:-$default}"
+    for choice in "$@"; do
+      [[ "$answer" == "$choice" ]] && { echo "$answer"; return; }
+    done
+    echo "  Please enter one of: $*" >&2
+  done
+}
+
 if [[ "$ask" == yes && -t 0 ]]; then
   value[mapping_speed]="$(ask_value mapping_speed)"
   value[race_speed]="$(ask_value race_speed)"
+  [[ -z "$controller" ]] && controller="$(ask_choice "Path follower (mppi: RPP maps, MPPI races)" rpp rpp mppi graceful)"
+  [[ -z "$planner" ]] && planner="$(ask_choice "Global planner" navfn navfn smac thetastar)"
   read -rp "Change the accelerations and turn speed too? [y/N] " more
   if [[ "$more" =~ ^[Yy] ]]; then
     value[mapping_accel]="$(ask_value mapping_accel)"
@@ -119,9 +148,14 @@ for name in mapping_speed race_speed mapping_accel race_accel turn_speed; do
   launch_args+=("${name}:=${value[$name]}")
 done
 
-args=("robot:=${robot}")
+controller="${controller:-rpp}"
+planner="${planner:-navfn}"
+case "$controller" in rpp | mppi | graceful) ;; *) echo "Unknown controller '$controller' (rpp, mppi, graceful)." >&2; exit 1 ;; esac
+case "$planner" in navfn | smac | thetastar) ;; *) echo "Unknown planner '$planner' (navfn, smac, thetastar)." >&2; exit 1 ;; esac
+
+args=("robot:=${robot}" "controller:=${controller}" "planner:=${planner}")
 for arg in "${launch_args[@]}"; do
-  [[ "$arg" == robot:=* ]] || args+=("$arg")
+  [[ "$arg" == robot:=* || "$arg" == controller:=* || "$arg" == planner:=* ]] || args+=("$arg")
 done
 cleanup() {
   # ros2 launch can exit before the separate Gazebo server and GUI processes do, leaving them running (and blocking
