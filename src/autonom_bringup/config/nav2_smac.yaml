@@ -1,4 +1,5 @@
-# Overlay for fibonacci_simulation.launch.py planner:=smac: Smac 2D instead of NavFn for the global path.
+# Nav2 overlay for planner:=smac (bringup.launch.py on the robot, fibonacci_simulation.launch.py in the sim):
+# Smac 2D instead of NavFn for the global path.
 # Both search the grid, but Smac 2D weighs cost along the path (cost_travel_multiplier: keeps it nearer the corridor
 # centre) and smooths the result, so the controller gets rounder corners than NavFn's grid path.
 # Smac Hybrid-A* (DUBIN) was tried first: every lap waypoint has a heading, so with a minimum turning radius it

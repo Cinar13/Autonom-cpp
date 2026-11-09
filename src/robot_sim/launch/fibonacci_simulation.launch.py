@@ -10,10 +10,10 @@ Driving overrides (empty keeps the configured values):
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
-  controller:=mppi               Nav2's MPPI controller instead of Regulated Pure Pursuit (config/nav2_mppi.yaml)
+  controller:=mppi               RPP maps, MPPI races (autonom_bringup/config/nav2_mppi.yaml + config/nav2_mppi.yaml)
   controller:=graceful           Nav2's Graceful controller (config/nav2_graceful.yaml)
-  planner:=smac                  Smac 2D global planner instead of NavFn (config/nav2_smac.yaml)
-  planner:=thetastar             Theta* any-angle global planner (config/nav2_thetastar.yaml)
+  planner:=smac                  Smac 2D global planner instead of NavFn (autonom_bringup/config/nav2_smac.yaml)
+  planner:=thetastar             Theta* any-angle global planner (autonom_bringup/config/nav2_thetastar.yaml)
 The Nav2 velocity smoother and the Gazebo DiffDrive limits are raised to match.
 
 The EKF fuses the IMU (gyro + accelerometer) and rf2o's forward speed by default (use_imu, use_rf2o): at
@@ -130,13 +130,17 @@ def _simulation(context):
     controller = LaunchConfiguration('controller').perform(context)
     if controller not in ('rpp', 'mppi', 'graceful'):
         raise ValueError(f"controller must be rpp, mppi or graceful, got '{controller}'")
-    if controller != 'rpp':
-        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', f'nav2_{controller}.yaml')) if p)
+    bringup_config = os.path.join(get_package_share_directory('autonom_bringup'), 'config')
+    if controller == 'mppi':  # the robot's MPPI overlay, then the TurtleBot3 delta
+        overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, 'nav2_mppi.yaml'),
+                                       os.path.join(sim_share, 'config', 'nav2_mppi.yaml')) if p)
+    elif controller == 'graceful':  # sim only: much slower than RPP and MPPI (docs/SESSION_2026-11-09.md)
+        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', 'nav2_graceful.yaml')) if p)
     planner = LaunchConfiguration('planner').perform(context)
     if planner not in ('navfn', 'smac', 'thetastar'):
         raise ValueError(f"planner must be navfn, smac or thetastar, got '{planner}'")
-    if planner != 'navfn':
-        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', f'nav2_{planner}.yaml')) if p)
+    if planner != 'navfn':  # shared with the robot (bringup.launch.py planner:=)
+        overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, f'nav2_{planner}.yaml')) if p)
     driving_overlay, xacro_args = _driving_overrides(context, robot)
     if driving_overlay:
         overlay = ','.join(path for path in (overlay, driving_overlay) if path)

@@ -1,4 +1,5 @@
-# Overlay for fibonacci_simulation.launch.py planner:=thetastar: Theta* instead of NavFn for the global path.
+# Nav2 overlay for planner:=thetastar (bringup.launch.py on the robot, fibonacci_simulation.launch.py in the sim):
+# Theta* instead of NavFn for the global path.
 # Theta* is A* with line-of-sight shortcuts, so the path is a few straight segments between corners instead of
 # NavFn's grid staircase; w_traversal_cost keeps those segments off the walls.
 planner_server:

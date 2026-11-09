@@ -1,5 +1,6 @@
 # Nav2 for mapping-while-navigating: slam_toolbox provides /map and map->odom (no AMCL / map_server).
-# Regulated Pure Pursuit is used instead of MPPI to keep the Raspberry Pi 5 CPU budget for SLAM.
+# Regulated Pure Pursuit by default, to keep the Raspberry Pi 5 CPU budget for SLAM. bringup.launch.py
+# controller:=mppi keeps RPP for the mapping lap and races with MPPI (config/nav2_mppi.yaml; CPU on the Pi untested).
 # Tuned for the real robot (r = 0.15 m, 0.6 m/s on straights) on the Fibonacci race arena: 2.49 x 2.10 m, ~0.6 m
 # corridors, three hairpins (robot_sim/models/Fibonacci_arena). robot_sim overlays adapt it to the TurtleBot3.
 # Competition tuning (docs/06_competition_rules.md): hard margin robot_radius + 20 mm (user decision, 2026-11-07)
