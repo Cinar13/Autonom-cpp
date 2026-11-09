@@ -12,6 +12,9 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
+      # 5 Hz instead of 1 Hz: the rear gate (KeepoutFilter) reaches the planner only on a costmap update. At 1 Hz
+      # and 1.2 m/s it lagged up to 1.2 m behind the robot, too late to stop a replan that turned back.
+      update_frequency: 5.0
       robot_radius: 0.11
       inflation_layer:
         inflation_radius: 0.18
