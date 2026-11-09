@@ -144,6 +144,17 @@ def generate_launch_description():
         output='screen',
     )
 
+    # Same IMU contract as the real robot: /imu/data with the bno055 driver's covariances (imu.yaml), not Gazebo's
+    # noise stddev squared, which made the EKF trust acceleration spikes ~60x too much.
+    imu_relay = Node(
+        package='autonom_localization',
+        executable='imu_covariance_relay',
+        name='imu_covariance_relay',
+        parameters=[os.path.join(bringup_share, 'config', 'imu.yaml'), SIM_TIME],
+        remappings=[('imu_in', '/imu/raw'), ('imu_out', '/imu/data')],
+        output='screen',
+    )
+
     autonomy = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(bringup_share, 'launch', 'autonomy.launch.py')),
         launch_arguments={
@@ -173,6 +184,7 @@ def generate_launch_description():
         spawn_robot,
         bridge,
         wheel_odometry,
+        imu_relay,
         autonomy,
         rviz,
     ])

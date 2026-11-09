@@ -19,6 +19,7 @@ target_include_directories(${PROJECT_NAME}_core PUBLIC
 )
 
 add_library(${PROJECT_NAME}_nodes SHARED
+  src/imu_covariance_relay.cpp
   src/odometry_covariance_relay.cpp
   src/scan_decimator.cpp
   src/scan_speckle_filter.cpp
@@ -38,6 +39,10 @@ target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_localization::OdometryCovarianceRelay"
   EXECUTABLE odometry_covariance_relay
+)
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_localization::ImuCovarianceRelay"
+  EXECUTABLE imu_covariance_relay
 )
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_localization::ScanDecimator"
