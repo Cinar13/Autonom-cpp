@@ -98,6 +98,11 @@ scripts/start_sim.sh --speed 0.6 controller:=mppi planner:=thetastar
 scripts/start_sim.sh robot:=autonom          # the real robot's model (default: TurtleBot3 Burger)
 scripts/start_sim.sh yaw:=3.1416             # race the other way round
 ```
+## Simulation on one Machine
+
+```bash
+scripts/start_sim.sh robot:=tb3_fast --speed 1.2 --controller mppi --planner navfn
+```
 
 `start_sim.sh` wraps `ros2 launch robot_sim fibonacci_simulation.launch.py`; any of its arguments can be added
 (`robot:=tb3|tb3_fast|autonom`, `controller:=`, `planner:=`, speeds, accelerations). The race starts on launch
