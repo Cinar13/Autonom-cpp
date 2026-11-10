@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Start the race simulation: Gazebo Harmonic (GUI) + RViz + the full autonomy stack on the Fibonacci arena.
+# Base station: every GUI application. The race simulation (Gazebo Harmonic GUI + RViz + the full autonomy stack on
+# the Fibonacci arena), or with --view only RViz, watching the real robot (started with scripts/start_robot.sh).
 #
+#   scripts/start_sim.sh --view                RViz on the real robot, no simulation
 #   scripts/start_sim.sh                       asks for the speeds and the Nav2 mode, then whether to change
 #                                              accelerations / turn speed
 #   scripts/start_sim.sh --speed 0.8           race laps at 0.8 m/s, no questions
@@ -16,6 +18,7 @@
 #   --turn-speed                               0.5-5.0 rad/s (configured 3.0; tb3 2.0)
 #   --controller                               rpp (default) | mppi (RPP maps, MPPI races) | graceful (sim only)
 #   --planner                                  navfn (default) | smac | thetastar
+#   --view                                     RViz only, for the real robot (wall-clock time, no Gazebo)
 # Nav2 modes measured in docs/SESSION_2026-11-09.md: MPPI races fastest at 0.6 m/s, MPPI and RPP + Theta* at 1.2 m/s.
 # Above 0.6 m/s only robot:=tb3_fast is tested (up to 1.25 m/s). Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
 set -euo pipefail
@@ -24,6 +27,7 @@ declare -A value=([mapping_speed]="" [race_speed]="" [mapping_accel]="" [race_ac
 controller=""
 planner=""
 ask=yes
+view=no
 launch_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,7 +39,8 @@ while [[ $# -gt 0 ]]; do
     --controller) controller="$2"; shift 2 ;;
     --planner) planner="$2"; shift 2 ;;
     --defaults) ask=no; shift ;;
-    -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
+    --view) view=yes; shift ;;
+    -h | --help) sed -n '2,24p' "$0"; exit 0 ;;
     *) launch_args+=("$1"); shift ;;
   esac
 done
@@ -60,14 +65,19 @@ source /opt/ros/jazzy/setup.bash
 source "$WS/install/setup.bash"
 set -u
 
-if pgrep -f '(^|/)gz sim( |$)' >/dev/null; then
-  echo "A Gazebo simulation is already running. Stop it first (Ctrl+C in its terminal, or: pkill -f 'gz sim')." >&2
-  exit 1
-fi
-
 # Hybrid-graphics laptops in on-demand mode: render Gazebo and RViz on the NVIDIA GPU (docs/HANDOFF.md section 2).
 if command -v prime-select >/dev/null && [[ "$(prime-select query 2>/dev/null)" == "on-demand" ]]; then
   export __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia
+fi
+
+if [[ "$view" == yes ]]; then
+  echo "Starting: ros2 launch autonom_bringup view.launch.py ${launch_args[*]}"
+  exec ros2 launch autonom_bringup view.launch.py "${launch_args[@]}"
+fi
+
+if pgrep -f '(^|/)gz sim( |$)' >/dev/null; then
+  echo "A Gazebo simulation is already running. Stop it first (Ctrl+C in its terminal, or: pkill -f 'gz sim')." >&2
+  exit 1
 fi
 
 # A stale ROS 2 CLI daemon can hide topics from `ros2 topic` commands in other terminals.

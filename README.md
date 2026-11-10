@@ -73,15 +73,15 @@ export CYCLONEDDS_URI=file://$HOME/Autonom-cpp/install/autonom_bringup/share/aut
 ## Run on the robot
 
 ```bash
-# Raspberry Pi 5
-ros2 launch autonom_bringup bringup.launch.py                          # wheels + rf2o, RPP + NavFn
-ros2 launch autonom_bringup bringup.launch.py use_imu:=true            # + BNO055 fused in the EKF
-ros2 launch autonom_bringup bringup.launch.py controller:=mppi          # RPP maps, MPPI races (see Nav2 modes)
-ros2 launch autonom_bringup bringup.launch.py planner:=thetastar       # Theta* global planner
-ros2 launch autonom_bringup bringup.launch.py autonomous_loop:=false   # map/teleop only
+# Raspberry Pi 5 (no GUI application runs on the robot)
+scripts/start_robot.sh                         # wheels + rf2o, RPP + NavFn
+scripts/start_robot.sh --imu                   # + BNO055 fused in the EKF
+scripts/start_robot.sh --controller mppi       # RPP maps, MPPI races (see Nav2 modes)
+scripts/start_robot.sh --planner thetastar     # Theta* global planner
+scripts/start_robot.sh --map-only              # map/teleop only, no loop patrol
 
-# Base station
-ros2 launch autonom_bringup view.launch.py
+# Base station (every GUI application, RViz included, is started from start_sim.sh)
+scripts/start_sim.sh --view                    # RViz on the real robot
 ```
 
 Nothing moves until the race starts: publish `std_msgs/Empty` on `/race/start_signal` (or `/race/start`); the
