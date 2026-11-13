@@ -23,7 +23,7 @@
 #   --map-only     do not run the loop patrol (autonomous_loop:=false)
 #   --imu          robot: start the BNO055 driver and fuse /imu/data (the simulation fuses its IMU by default)
 #   --no-rf2o      wheel odometry only, no rf2o laser odometry (use_rf2o:=false)
-#   --sim          against the running simulation (use_sim_time); robot:= tb3 | tb3_fast (default) | autonom
+#   --sim          against the running simulation, local or on the LAN (use_sim_time); robot:= tb3 | tb3_fast (default) | autonom
 #   --sim only (empty / Enter keeps the configured value):
 #     --mapping-speed, --speed (--race-speed)  0.1-1.5 m/s (robot:=autonom up to 1.46, its motors' 430 rpm)
 #     --mapping-accel, --race-accel            0.1-3.0 m/s^2 (configured 0.5 / 1.5)
@@ -119,14 +119,26 @@ if [[ "$sim" == no ]]; then
   exec ros2 launch autonom_bringup bringup.launch.py "${args[@]}"
 fi
 
-# --sim: the robot code against the simulation of scripts/start_sim.sh.
-if ! pgrep -f '(^|/)gz sim( |$)' >/dev/null; then
-  echo "No Gazebo simulation is running. Start it first, in another terminal: scripts/start_sim.sh" >&2
-  exit 1
-fi
-
+# --sim: the robot code against the simulation of scripts/start_sim.sh, on this machine or another one on the LAN.
 # A stale ROS 2 CLI daemon can hide topics from `ros2 topic` commands in other terminals.
 ros2 daemon stop >/dev/null 2>&1 || true
+
+# Gazebo may run on another machine, so look for the simulation's /clock over DDS instead of a local gz process.
+if ! pgrep -f '(^|/)gz sim( |$)' >/dev/null; then
+  echo "No local Gazebo; waiting up to 20 s for the simulation's /clock on the network ..."
+  if ! timeout 20 ros2 topic echo --once --qos-reliability best_effort /clock rosgraph_msgs/msg/Clock \
+      >/dev/null 2>&1; then
+    echo "No simulation found: /clock is not visible from this machine." >&2
+    echo "Start it first (scripts/start_sim.sh), here or on another machine. If it runs on another machine:" >&2
+    echo "  - same ROS_DOMAIN_ID on both (here: ${ROS_DOMAIN_ID:-0}), ROS_AUTOMATIC_DISCOVERY_RANGE not LOCALHOST" >&2
+    echo "    (here: ${ROS_AUTOMATIC_DISCOVERY_RANGE:-unset}), same RMW_IMPLEMENTATION (here: ${RMW_IMPLEMENTATION:-unset})" >&2
+    echo "  - CYCLONEDDS_URI either set on BOTH machines or on neither (here: ${CYCLONEDDS_URI:-unset}); with the" >&2
+    echo "    repo's cyclonedds.xml (unicast only) AUTONOM_RPI_IP / AUTONOM_WSL_IP must hold the two machines' LAN IPs" >&2
+    echo "  - firewall open for UDP 7400-7700 (e.g. sudo ufw allow from <other machine's IP>)" >&2
+    exit 1
+  fi
+  echo "Simulation found on the network."
+fi
 
 robot="tb3_fast"
 for arg in "${launch_args[@]}"; do
