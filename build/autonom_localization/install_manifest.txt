@@ -1,0 +1,1 @@
+/home/max/Autonom-cpp/install/autonom_localization/share/autonom_localization/package.dsv

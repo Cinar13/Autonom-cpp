@@ -1,0 +1,4 @@
+autonom_localization::OdometryCovarianceRelay;lib/libautonom_localization_nodes.so
+autonom_localization::ImuCovarianceRelay;lib/libautonom_localization_nodes.so
+autonom_localization::ScanDecimator;lib/libautonom_localization_nodes.so
+autonom_localization::ScanSpeckleFilter;lib/libautonom_localization_nodes.so

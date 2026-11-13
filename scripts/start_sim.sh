@@ -1,46 +1,32 @@
 #!/usr/bin/env bash
-# Base station: every GUI application. The race simulation (Gazebo Harmonic GUI + RViz + the full autonomy stack on
-# the Fibonacci arena), or with --view only RViz, watching the real robot (started with scripts/start_robot.sh).
+# Base station: every GUI application, no robot code. The simulated Fibonacci arena (Gazebo Harmonic GUI + the
+# simulated robot + RViz), or with --view only RViz, watching the real robot (started with scripts/start_robot.sh).
+# The robot code (EKF, slam_toolbox, Nav2, loop patrol, start gate) runs separately, in a second terminal:
+#   scripts/start_robot.sh --sim               against this simulation (asks for the speeds and the Nav2 mode)
+#   scripts/start_robot.sh                     on the Pi
 #
+#   scripts/start_sim.sh                       the simulation, robot:=tb3_fast
 #   scripts/start_sim.sh --view                RViz on the real robot, no simulation
-#   scripts/start_sim.sh                       asks for the speeds and the Nav2 mode, then whether to change
-#                                              accelerations / turn speed
-#   scripts/start_sim.sh --speed 0.8           race laps at 0.8 m/s, no questions
-#   scripts/start_sim.sh --speed 1.2 --controller mppi --planner thetastar
-#   scripts/start_sim.sh --mapping-speed 0.25 --speed 0.5 --race-accel 2.0 --turn-speed 4.0
-#   scripts/start_sim.sh --defaults            configured values, no questions
-#   scripts/start_sim.sh robot:=autonom        the real robot's model; any fibonacci_simulation argument can be
-#   scripts/start_sim.sh yaw:=3.1416           added, e.g. race the other way round
+#   scripts/start_sim.sh robot:=autonom        the real robot's model (start_robot.sh --sim robot:=autonom with it);
+#   scripts/start_sim.sh yaw:=3.1416           any fibonacci_simulation argument can be added, e.g. race the other
+#                                              way round
 #
-# Options (empty / Enter keeps the configured value):
-#   --mapping-speed, --speed (--race-speed)    0.1-1.5 m/s (robot:=autonom up to 1.46, its motors' 430 rpm)
-#   --mapping-accel, --race-accel              0.1-3.0 m/s^2 (configured 0.5 / 1.5)
-#   --turn-speed                               0.5-5.0 rad/s (configured 3.0; tb3 2.0)
-#   --controller                               rpp (default) | mppi (RPP maps, MPPI races) | graceful (sim only)
-#   --planner                                  navfn (default) | smac | thetastar
+# Options:
 #   --view                                     RViz only, for the real robot (wall-clock time, no Gazebo)
-# Nav2 modes measured in docs/SESSION_2026-11-09.md: MPPI races fastest at 0.6 m/s, MPPI and RPP + Theta* at 1.2 m/s.
-# Above 0.6 m/s only robot:=tb3_fast is tested (up to 1.25 m/s). Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
+# Gazebo's wheel limits are opened wide; the speeds and accelerations are chosen in start_robot.sh --sim.
+# Needs a built workspace (scripts/install.sh). Ctrl+C stops everything.
 set -euo pipefail
 
-declare -A value=([mapping_speed]="" [race_speed]="" [mapping_accel]="" [race_accel]="" [turn_speed]="")
-controller=""
-planner=""
-ask=yes
 view=no
 launch_args=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --speed | --race-speed) value[race_speed]="$2"; ask=no; shift 2 ;;
-    --mapping-speed) value[mapping_speed]="$2"; ask=no; shift 2 ;;
-    --mapping-accel) value[mapping_accel]="$2"; ask=no; shift 2 ;;
-    --race-accel) value[race_accel]="$2"; ask=no; shift 2 ;;
-    --turn-speed) value[turn_speed]="$2"; ask=no; shift 2 ;;
-    --controller) controller="$2"; shift 2 ;;
-    --planner) planner="$2"; shift 2 ;;
-    --defaults) ask=no; shift ;;
     --view) view=yes; shift ;;
-    -h | --help) sed -n '2,24p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,18p' "$0"; exit 0 ;;
+    --speed | --race-speed | --mapping-speed | --mapping-accel | --race-accel | --turn-speed | --controller | --planner | \
+      --defaults | controller:=* | planner:=* | *_speed:=* | *_accel:=*)
+      echo "$1 belongs to the robot code now: scripts/start_robot.sh --sim $1 ..." >&2
+      exit 1 ;;
     *) launch_args+=("$1"); shift ;;
   esac
 done
@@ -87,85 +73,11 @@ robot="tb3_fast"
 for arg in "${launch_args[@]}"; do
   [[ "$arg" == robot:=* ]] && robot="${arg#robot:=}"
 done
-case "$robot" in
-  tb3) max_speed=1.5 default_mapping=0.22 default_race=0.22 default_turn=2.0 ;;
-  tb3_fast) max_speed=1.5 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
-  autonom) max_speed=1.46 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
-  *) echo "Unknown robot '$robot' (tb3, tb3_fast, autonom)." >&2; exit 1 ;;
-esac
-# name -> "low high unit label default"
-declare -A spec=(
-  [mapping_speed]="0.1 ${max_speed} m/s Mapping-lap_speed ${default_mapping}"
-  [race_speed]="0.1 ${max_speed} m/s Race_speed ${default_race}"
-  [mapping_accel]="0.1 3.0 m/s^2 Mapping-lap_acceleration 0.5"
-  [race_accel]="0.1 3.0 m/s^2 Race_acceleration 1.5"
-  [turn_speed]="0.5 5.0 rad/s Turn_speed ${default_turn}"
-)
+case "$robot" in tb3 | tb3_fast | autonom) ;; *) echo "Unknown robot '$robot' (tb3, tb3_fast, autonom)." >&2; exit 1 ;; esac
 
-in_range() {  # in_range <value> <low> <high>
-  [[ "$1" =~ ^[0-9]*\.?[0-9]+$ ]] && awk -v v="$1" -v lo="$2" -v hi="$3" 'BEGIN { exit !(v >= lo && v <= hi) }'
-}
-ask_value() {  # ask_value <name>: prints the answer ('' = keep the configured value)
-  local low high unit label default answer
-  read -r low high unit label default <<< "${spec[$1]}"
-  while true; do
-    read -rp "${label//_/ } in ${unit}, ${low}-${high} [Enter: ${default}]: " answer
-    if [[ -z "$answer" ]] || in_range "$answer" "$low" "$high"; then
-      echo "$answer"
-      return
-    fi
-    echo "  Please enter a number between ${low} and ${high}." >&2
-  done
-}
-
-for arg in "${launch_args[@]}"; do  # controller:= / planner:= given the launch way count too
-  [[ "$arg" == controller:=* ]] && controller="${arg#controller:=}"
-  [[ "$arg" == planner:=* ]] && planner="${arg#planner:=}"
-done
-ask_choice() {  # ask_choice <label> <default> <choices...>: prints the answer
-  local label="$1" default="$2" answer options
-  shift 2
-  options="$(printf ' | %s' "$@")"
-  while true; do
-    read -rp "${label} (${options:3}) [Enter: ${default}]: " answer
-    answer="${answer:-$default}"
-    for choice in "$@"; do
-      [[ "$answer" == "$choice" ]] && { echo "$answer"; return; }
-    done
-    echo "  Please enter one of: $*" >&2
-  done
-}
-
-if [[ "$ask" == yes && -t 0 ]]; then
-  value[mapping_speed]="$(ask_value mapping_speed)"
-  value[race_speed]="$(ask_value race_speed)"
-  [[ -z "$controller" ]] && controller="$(ask_choice "Path follower (mppi: RPP maps, MPPI races)" rpp rpp mppi graceful)"
-  [[ -z "$planner" ]] && planner="$(ask_choice "Global planner" navfn navfn smac thetastar)"
-  read -rp "Change the accelerations and turn speed too? [y/N] " more
-  if [[ "$more" =~ ^[Yy] ]]; then
-    value[mapping_accel]="$(ask_value mapping_accel)"
-    value[race_accel]="$(ask_value race_accel)"
-    value[turn_speed]="$(ask_value turn_speed)"
-  fi
-fi
-for name in mapping_speed race_speed mapping_accel race_accel turn_speed; do
-  [[ -z "${value[$name]}" ]] && continue
-  read -r low high unit _ _ <<< "${spec[$name]}"
-  if ! in_range "${value[$name]}" "$low" "$high"; then
-    echo "${name//_/ } '${value[$name]}' is not a number between ${low} and ${high} ${unit} for robot:=${robot}." >&2
-    exit 1
-  fi
-  launch_args+=("${name}:=${value[$name]}")
-done
-
-controller="${controller:-rpp}"
-planner="${planner:-navfn}"
-case "$controller" in rpp | mppi | graceful) ;; *) echo "Unknown controller '$controller' (rpp, mppi, graceful)." >&2; exit 1 ;; esac
-case "$planner" in navfn | smac | thetastar) ;; *) echo "Unknown planner '$planner' (navfn, smac, thetastar)." >&2; exit 1 ;; esac
-
-args=("robot:=${robot}" "controller:=${controller}" "planner:=${planner}")
+args=("stack:=world" "robot:=${robot}")
 for arg in "${launch_args[@]}"; do
-  [[ "$arg" == robot:=* || "$arg" == controller:=* || "$arg" == planner:=* ]] || args+=("$arg")
+  [[ "$arg" == robot:=* || "$arg" == stack:=* ]] || args+=("$arg")
 done
 cleanup() {
   # ros2 launch can exit before the separate Gazebo server and GUI processes do, leaving them running (and blocking
@@ -182,4 +94,5 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting: ros2 launch robot_sim fibonacci_simulation.launch.py ${args[*]}"
+echo "Then, in a second terminal: scripts/start_robot.sh --sim robot:=${robot}"
 ros2 launch robot_sim fibonacci_simulation.launch.py "${args[@]}"

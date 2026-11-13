@@ -1,0 +1,3 @@
+autonom_hardware::MotorDriverNode;lib/libautonom_hardware_nodes.so
+autonom_hardware::WheelOdometryNode;lib/libautonom_hardware_nodes.so
+autonom_hardware::SimWheelOdometryNode;lib/libautonom_hardware_nodes.so

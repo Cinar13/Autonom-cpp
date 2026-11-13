@@ -1,5 +1,10 @@
 """Gazebo Harmonic simulation of the full autonomy stack (use_sim_time:=true everywhere).
 
+The two halves can run as separate launches (scripts/start_sim.sh, then scripts/start_robot.sh --sim):
+  use_autonomy:=false   the simulated world only: Gazebo, robot spawn, robot_state_publisher, the ros_gz bridge, the
+                        sim stand-ins for the hardware drivers (wheel odometry, IMU relay) and RViz
+  use_world:=false      the robot code only: autonomy.launch.py (EKF, slam_toolbox, Nav2, loop patrol, start gate)
+
 Swap the placeholder TurtleBot3 Burger for the custom robot with a single argument, e.g.
   robot_urdf:=$(ros2 pkg prefix autonom_description)/share/autonom_description/urdf/autonom.urdf.xacro
 The description is expanded with `sim:=true`, so it must include autonom_description/urdf/gz_plugins.xacro.
@@ -34,6 +39,8 @@ def _gz_sim(gz_args, on_exit_shutdown):
 
 
 def _gazebo(context):
+    if not is_true(context, 'use_world'):
+        return []
     world = LaunchConfiguration('world').perform(context)
     if not is_true(context, 'gui'):
         return [_gz_sim(['-s', '--headless-rendering', '-r', '-v', '2', world], 'true')]
@@ -66,6 +73,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world', default_value=os.path.join(sim_share, 'worlds', 'circuit2_harmonic.sdf'),
             description='Gazebo world SDF'),
+        DeclareLaunchArgument('use_world', default_value='true', description='Start the simulated world and RViz'),
+        DeclareLaunchArgument(
+            'use_autonomy', default_value='true', description='Start the robot code (autonomy.launch.py)'),
         DeclareLaunchArgument('gui', default_value='true', description='Show the Gazebo GUI (false: headless server)'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz2'),
         DeclareLaunchArgument('use_imu', default_value='false', description='Fuse the simulated IMU in the EKF'),
@@ -167,6 +177,7 @@ def generate_launch_description():
             'nav2_params_overlay': LaunchConfiguration('nav2_params_overlay'),
             'nav2_startup_delay': '10.0',
         }.items(),
+        condition=IfCondition(LaunchConfiguration('use_autonomy')),
     )
 
     rviz = Node(
@@ -178,13 +189,17 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription(arguments + environment + [
-        OpaqueFunction(function=_gazebo),
+    world = GroupAction(scoped=False, condition=IfCondition(LaunchConfiguration('use_world')), actions=[
         robot_state_publisher,
         spawn_robot,
         bridge,
         wheel_odometry,
         imu_relay,
-        autonomy,
         rviz,
+    ])
+
+    return LaunchDescription(arguments + environment + [
+        OpaqueFunction(function=_gazebo),
+        world,
+        autonomy,
     ])

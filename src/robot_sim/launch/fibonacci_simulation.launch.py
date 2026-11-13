@@ -16,6 +16,13 @@ Driving overrides (empty keeps the configured values):
   planner:=thetastar             Theta* any-angle global planner (autonom_bringup/config/nav2_thetastar.yaml)
 The Nav2 velocity smoother and the Gazebo DiffDrive limits are raised to match.
 
+stack:=all     world and robot code in one launch (default)
+stack:=world   the simulated world and RViz only (scripts/start_sim.sh); the Gazebo DiffDrive limits are opened to the
+               ranges above (speed up to the robot's maximum, 5.0 rad/s, 3.0 m/s^2) so that whatever the robot code
+               chooses later is limited by its own Nav2 / patrol settings, not by Gazebo
+stack:=robot   the robot code only (scripts/start_robot.sh --sim), against a running stack:=world of the same robot:=;
+               the driving overrides, controller:= and planner:= apply here
+
 The EKF fuses the IMU (gyro + accelerometer) and rf2o's forward speed by default (use_imu, use_rf2o): at
 0.6 m/s the TurtleBot3's wheels slip and wheel-only odometry drifted up to 0.35 m / 1 rad; fused it stayed within 0.17 m over 3 minutes.
 
@@ -109,6 +116,19 @@ def _driving_overrides(context, robot):
     return f.name, ' '.join(f'{k}:={v}' for k, v in xacro.items())
 
 
+STACKS = ('all', 'world', 'robot')
+
+
+def _open_gz_limits(robot):
+    """xacro arguments that keep Gazebo's DiffDrive from capping any speed / turn / acceleration a user may choose."""
+    limits = LIMITS[robot]
+    xacro = {'gz_max_angular_velocity': max(limits['gz_turn'], TURN_RANGE[1]),
+             'gz_max_acceleration': ACCEL_RANGE[1]}
+    if robot != 'autonom':  # the real robot's model already stops at its motors' 1.46 m/s
+        xacro['gz_max_velocity'] = round(limits['max_speed'] + 0.05, 3)
+    return ' '.join(f'{k}:={v}' for k, v in xacro.items())
+
+
 def _simulation(context):
     sim_share = get_package_share_directory('robot_sim')
     robot = LaunchConfiguration('robot').perform(context)
@@ -141,7 +161,13 @@ def _simulation(context):
         raise ValueError(f"planner must be navfn, smac or thetastar, got '{planner}'")
     if planner != 'navfn':  # shared with the robot (bringup.launch.py planner:=)
         overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, f'nav2_{planner}.yaml')) if p)
-    driving_overlay, xacro_args = _driving_overrides(context, robot)
+    stack = LaunchConfiguration('stack').perform(context)
+    if stack not in STACKS:
+        raise ValueError(f"stack must be one of {STACKS}, got '{stack}'")
+    if stack == 'world':
+        driving_overlay, xacro_args = '', _open_gz_limits(robot)
+    else:
+        driving_overlay, xacro_args = _driving_overrides(context, robot)
     if driving_overlay:
         overlay = ','.join(path for path in (overlay, driving_overlay) if path)
     arguments = {
@@ -154,6 +180,8 @@ def _simulation(context):
         'yaw': LaunchConfiguration('yaw'),
         'use_imu': LaunchConfiguration('use_imu'),
         'use_rf2o': LaunchConfiguration('use_rf2o'),
+        'use_world': str(stack != 'robot').lower(),
+        'use_autonomy': str(stack != 'world').lower(),
         **wheels,
     }
     return [IncludeLaunchDescription(
@@ -164,6 +192,9 @@ def _simulation(context):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'stack', default_value='all',
+            description='all | world (simulated world + RViz) | robot (robot code against a running world)'),
         DeclareLaunchArgument('robot', default_value='tb3', description=f'Robot model: {" | ".join(ROBOTS)}'),
         DeclareLaunchArgument(
             'controller', default_value='rpp',

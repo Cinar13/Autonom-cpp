@@ -1,0 +1,1 @@
+/home/max/Autonom-cpp/install/sllidar_ros2/share/sllidar_ros2/package.dsv

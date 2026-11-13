@@ -1,0 +1,8 @@
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/uninstall.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/autonom_description_uninstall.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/test.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/edit_cache.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/rebuild_cache.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/list_install_components.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/install.dir
+/home/max/Autonom-cpp/build/autonom_description/CMakeFiles/install/local.dir

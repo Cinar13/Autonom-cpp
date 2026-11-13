@@ -1,0 +1,4 @@
+source;share/autonom_race/local_setup.bash
+source;share/autonom_race/local_setup.dsv
+source;share/autonom_race/local_setup.sh
+source;share/autonom_race/local_setup.zsh

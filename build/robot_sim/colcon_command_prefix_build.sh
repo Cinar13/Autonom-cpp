@@ -1,0 +1,10 @@
+# generated from colcon_core/shell/template/command_prefix.sh.em
+. "/home/max/Autonom-cpp/install/autonom_description/share/autonom_description/package.sh"
+. "/home/max/Autonom-cpp/install/autonom_hardware/share/autonom_hardware/package.sh"
+. "/home/max/Autonom-cpp/install/autonom_localization/share/autonom_localization/package.sh"
+. "/home/max/Autonom-cpp/install/autonom_patrol/share/autonom_patrol/package.sh"
+. "/home/max/Autonom-cpp/install/autonom_race/share/autonom_race/package.sh"
+. "/home/max/Autonom-cpp/install/rf2o_laser_odometry/share/rf2o_laser_odometry/package.sh"
+. "/home/max/Autonom-cpp/install/sllidar_ros2/share/sllidar_ros2/package.sh"
+. "/home/max/Autonom-cpp/install/turtlebot3_description/share/turtlebot3_description/package.sh"
+. "/home/max/Autonom-cpp/install/autonom_bringup/share/autonom_bringup/package.sh"

@@ -1,0 +1,184 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-168c12ed89ec8d203740.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.15"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10
+					]
+				},
+				{
+					"build" : "gtest",
+					"jsonFile" : "directory-gtest-0908a8c91ddba5d6c989.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "/opt/ros/jazzy/src/gtest_vendor",
+					"targetIndexes" : 
+					[
+						3,
+						4
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "autonom_localization",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "gtest",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						3,
+						4
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_localization_core::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_localization_core-361c6298f13d4b7f1868.json",
+					"name" : "autonom_localization_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_localization_nodes::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_localization_nodes-aeefe3cc521789939ec9.json",
+					"name" : "autonom_localization_nodes",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_localization_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_localization_uninstall-08244eca11c6907172e1.json",
+					"name" : "autonom_localization_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "gtest::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest-bd41c5254821c0b39660.json",
+					"name" : "gtest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "gtest_main::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest_main-3e8ee351ef437b80b96b.json",
+					"name" : "gtest_main",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "imu_covariance_relay::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-imu_covariance_relay-0d42c8a04d91afdf4127.json",
+					"name" : "imu_covariance_relay",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "odometry_covariance_relay::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-odometry_covariance_relay-97c9acaec13fbd4bb7bd.json",
+					"name" : "odometry_covariance_relay",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "scan_decimator::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-scan_decimator-4a2b4169d0d955c115e7.json",
+					"name" : "scan_decimator",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "scan_speckle_filter::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-scan_speckle_filter-3c9e3499f51e7b3d62bd.json",
+					"name" : "scan_speckle_filter",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "test_speckle_filter::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-test_speckle_filter-c6843146ac7e09d51f16.json",
+					"name" : "test_speckle_filter",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-f98c6575022b8c524469.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/max/Autonom-cpp/build/autonom_localization",
+		"source" : "/home/max/Autonom-cpp/src/autonom_localization"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

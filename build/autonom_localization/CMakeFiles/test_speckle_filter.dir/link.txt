@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_speckle_filter.dir/test/test_speckle_filter.cpp.o -o test_speckle_filter  -Wl,-rpath,/home/max/Autonom-cpp/build/autonom_localization gtest/libgtest_main.a gtest/libgtest.a libautonom_localization_core.so -pthread 

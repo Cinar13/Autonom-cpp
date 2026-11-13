@@ -1,0 +1,1 @@
+/usr/bin/c++ -fPIC -shared -Wl,-soname,libautonom_race_core.so -o libautonom_race_core.so CMakeFiles/autonom_race_core.dir/src/start_gate.cpp.o 

@@ -1,0 +1,193 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-26cb5e9025e67843bfbc.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.15"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11
+					]
+				},
+				{
+					"build" : "gtest",
+					"jsonFile" : "directory-gtest-0908a8c91ddba5d6c989.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "/opt/ros/jazzy/src/gtest_vendor",
+					"targetIndexes" : 
+					[
+						3,
+						4
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "autonom_hardware",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "gtest",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						3,
+						4
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_hardware_core::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_hardware_core-f4076e4010ce430fee93.json",
+					"name" : "autonom_hardware_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_hardware_nodes::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_hardware_nodes-990a9b4a9fad32d15800.json",
+					"name" : "autonom_hardware_nodes",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "autonom_hardware_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-autonom_hardware_uninstall-1a1ce4ceaef6adc95cf0.json",
+					"name" : "autonom_hardware_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "gtest::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest-f9164ac9d03271635bf2.json",
+					"name" : "gtest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 1,
+					"id" : "gtest_main::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest_main-a1a00a39cebf69728282.json",
+					"name" : "gtest_main",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "motor_driver_node::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-motor_driver_node-268d64470171541305f9.json",
+					"name" : "motor_driver_node",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "sim_wheel_odometry_node::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-sim_wheel_odometry_node-5a7e1f4ee13db8f79357.json",
+					"name" : "sim_wheel_odometry_node",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "test_diff_drive_kinematics::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-test_diff_drive_kinematics-5d8af3d49ec097424616.json",
+					"name" : "test_diff_drive_kinematics",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "test_encoder_model::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-test_encoder_model-d99ce19fb5b480d81bfe.json",
+					"name" : "test_encoder_model",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "test_pid_controller::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-test_pid_controller-5d3e5641fadc1b19fee2.json",
+					"name" : "test_pid_controller",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-3715d178a279c1144af9.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "wheel_odometry_node::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-wheel_odometry_node-3129ebcd8a7d3fe17c41.json",
+					"name" : "wheel_odometry_node",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/max/Autonom-cpp/build/autonom_hardware",
+		"source" : "/home/max/Autonom-cpp/src/autonom_hardware"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 6
+	}
+}

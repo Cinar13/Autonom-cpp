@@ -1,0 +1,1 @@
+/home/max/Autonom-cpp/install/rf2o_laser_odometry/share/rf2o_laser_odometry/package.dsv

@@ -1,0 +1,1 @@
+/home/max/Autonom-cpp/install/turtlebot3_description/share/turtlebot3_description/package.dsv

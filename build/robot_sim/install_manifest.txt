@@ -1,0 +1,2 @@
+/home/max/Autonom-cpp/install/robot_sim/share/robot_sim/launch/__pycache__/fibonacci_simulation.launch.cpython-312.pyc
+/home/max/Autonom-cpp/install/robot_sim/share/robot_sim/package.dsv
