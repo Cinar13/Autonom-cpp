@@ -38,6 +38,27 @@ rosdep install --from-paths src --ignore-src -y --skip-keys cmake_modules   # rf
 ```
 dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
 ```
+### Pinout (Raspberry Pi 5)
+
+BCM GPIO numbers, as used in `autonom_hardware/config/hardware.yaml`. The motor and encoder pins follow
+[atestokhay/autonomous-car](https://github.com/atestokhay/autonomous-car) (`software/config/pins.yaml`), which
+wires a TB6612FNG; this robot keeps the A4950, so only that repo's AIN1/BIN1 pins carry the direction signal.
+
+| Function | BCM GPIO | Header pin | Parameter |
+|---|---|---|---|
+| Left motor A4950 IN1 (PWM0 ch 0) | 12 | 32 | `left_motor.pwm_channel: 0` |
+| Left motor A4950 IN2 (direction) | 5 | 29 | `left_motor.direction_pin` |
+| Right motor A4950 IN1 (PWM0 ch 1) | 13 | 33 | `right_motor.pwm_channel: 1` |
+| Right motor A4950 IN2 (direction) | 20 | 38 | `right_motor.direction_pin` |
+| Left encoder A / B | 17 / 27 | 11 / 13 | `left_encoder.pin_a` / `pin_b` |
+| Right encoder A / B | 23 / 24 | 16 / 18 | `right_encoder.pin_a` / `pin_b` |
+| BNO055 IMU SDA / SCL (I2C1, address 0x28) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu.yaml` |
+| RPLiDAR S3 | USB (`/dev/ttyUSB0`, 1 000 000 baud) | — | `lidar_serial_port` launch argument |
+
+Encoders and the IMU run from 3.3 V: the Pi's GPIO pins are not 5 V tolerant, so never pull encoder outputs
+up to 5 V (the internal pull-ups are enabled with `pull_up: true`). The reference repo's AIN2 (GPIO6),
+BIN2 (GPIO21) and STBY (GPIO26) pins are unused with the A4950.
+
 Give the user access to `/dev/gpiochip*`, `/sys/class/pwm` and the LiDAR serial port (group membership
 or a udev rule, depending on the image; `dialout` covers the serial port), then build everything:
 ```bash
@@ -107,7 +128,7 @@ ros2 launch robot_sim tb3_simulation.launch.py \
 
 ## Bring-up checklist
 
-1. Verify pins, `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` in `autonom_hardware/config/hardware.yaml`.
+1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` in `autonom_hardware/config/hardware.yaml`.
 2. With wheels off the ground, check `/joint_states` velocities are positive when driving forward; fix with `*.inverted`.
 3. Tune `pid.kf` first (effort per rad/s), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
 4. Check the LiDAR yaw (`laser_yaw` in the URDF) so the scan lines up with the robot's front in RViz.

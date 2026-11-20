@@ -53,7 +53,7 @@ MotorDriverNode::MotorDriverNode(const rclcpp::NodeOptions & options)
   right_pid_.emplace(gains);
 
   const A4950Config left_config = declareMotorConfig("left_motor", 0, 5);
-  const A4950Config right_config = declareMotorConfig("right_motor", 1, 6);
+  const A4950Config right_config = declareMotorConfig("right_motor", 1, 20);
   try {
     const GpioChipPtr chip = openGpioChip(gpio_chip);
     left_motor_ = std::make_unique<A4950Motor>(chip, left_config, "autonom_left_motor");
