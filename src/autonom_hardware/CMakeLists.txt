@@ -56,15 +56,11 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
   EXECUTABLE wheel_odometry_node
 )
 
-add_executable(motor_safe_stop src/motor_safe_stop.cpp)
-target_link_libraries(motor_safe_stop ${PROJECT_NAME}_core rclcpp::rclcpp)
-
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS motor_safe_stop DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 

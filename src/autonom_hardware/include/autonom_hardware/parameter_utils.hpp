@@ -58,7 +58,6 @@ inline std::array<double, 36> declareCovarianceDiagonal(
 }
 
 /// Declares `<prefix>.pwm_chip|pwm_channel|in1_pin|in2_pin|pwm_frequency_hz|inverted` for one TB6612FNG channel.
-/// Shared by the motor driver and motor_safe_stop so both always address the same outputs.
 inline Tb6612Config declareTb6612Config(
   rclcpp::Node & node, const std::string & prefix, int default_channel, int default_in1_pin, int default_in2_pin)
 {
