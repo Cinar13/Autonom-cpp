@@ -118,7 +118,11 @@ void WheelOdometryNode::update()
   pose_.integrate(displacement);
 
   if (!left_encoder_->healthy() || !right_encoder_->healthy()) {
-    RCLCPP_ERROR_THROTTLE(get_logger(), steady_clock_, kWarnThrottleMs, "Encoder event thread stopped; odometry frozen");
+    // A dead event thread freezes the counts, which would read as wheels standing still: the motor driver's PID
+    // would then wind up to full effort. Publish nothing, so its feedback timeout coasts the motors instead.
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), steady_clock_, kWarnThrottleMs, "Encoder event thread stopped; odometry and joint_states halted");
+    return;
   }
   const std::uint64_t missed = left_encoder_->missedTransitions() + right_encoder_->missedTransitions();
   if (missed != reported_missed_) {

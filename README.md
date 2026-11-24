@@ -1,6 +1,6 @@
 # Autonom — ROS 2 Jazzy autonomous mapping & looping robot
 
-Raspberry Pi 5 robot (A4950 motors, quadrature encoders, RPLiDAR S3, optional BNO055 IMU) that maps an
+Raspberry Pi 5 robot (TB6612FNG motor driver, quadrature encoders, RPLiDAR S3, optional BNO055 IMU) that maps an
 unknown environment with `slam_toolbox` and patrols continuous loops around the explored area with Nav2.
 RViz runs on a WSL2 base station only. A Gazebo Harmonic simulation (TurtleBot3 Burger placeholder on the
 `circuit2` track) runs the identical autonomy pipeline with `use_sim_time:=true`.
@@ -9,7 +9,7 @@ RViz runs on a WSL2 base station only. A Gazebo Harmonic simulation (TurtleBot3 
 
 | Package | Role |
 |---|---|
-| `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → A4950 PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`) |
+| `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → TB6612FNG PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`) |
 | `autonom_localization` | C++17 components: `OdometryCovarianceRelay` (adds covariance to rf2o / Gazebo odometry), `ScanDecimator` (thins S3 scans for rf2o) |
 | `autonom_description` | URDF/xacro (`base_footprint`, `base_link`, `laser`, `imu_link`, wheel joints); `gz_plugins.xacro` Gazebo macros incl. an RPLiDAR S3 sensor |
 | `autonom_bringup` | Launch files (`bringup` = `hardware` + `autonomy`), EKF / slam_toolbox / Nav2 / CycloneDDS / RViz config, `loop_patrol.py` |
@@ -40,24 +40,24 @@ dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
 ```
 ### Pinout (Raspberry Pi 5)
 
-BCM GPIO numbers, as used in `autonom_hardware/config/hardware.yaml`. The motor and encoder pins follow
-[atestokhay/autonomous-car](https://github.com/atestokhay/autonomous-car) (`software/config/pins.yaml`), which
-wires a TB6612FNG; this robot keeps the A4950, so only that repo's AIN1/BIN1 pins carry the direction signal.
+BCM GPIO numbers, as used in `autonom_hardware/config/hardware.yaml`, following the wiring schematic: a
+TB6612FNG drives both motors (VM from the 6 V buck regulator, VCC from the Pi's 3.3 V), channel A the left
+motor and channel B the right.
 
 | Function | BCM GPIO | Header pin | Parameter |
 |---|---|---|---|
-| Left motor A4950 IN1 (PWM0 ch 0) | 12 | 32 | `left_motor.pwm_channel: 0` |
-| Left motor A4950 IN2 (direction) | 5 | 29 | `left_motor.direction_pin` |
-| Right motor A4950 IN1 (PWM0 ch 1) | 13 | 33 | `right_motor.pwm_channel: 1` |
-| Right motor A4950 IN2 (direction) | 20 | 38 | `right_motor.direction_pin` |
+| Left motor PWMA (PWM0 ch 0) | 12 | 32 | `left_motor.pwm_channel: 0` |
+| Left motor AIN1 / AIN2 | 5 / 6 | 29 / 31 | `left_motor.in1_pin` / `in2_pin` |
+| Right motor PWMB (PWM0 ch 1) | 13 | 33 | `right_motor.pwm_channel: 1` |
+| Right motor BIN1 / BIN2 | 20 / 21 | 38 / 40 | `right_motor.in1_pin` / `in2_pin` |
+| TB6612 STBY (high = enabled) | 26 | 37 | `standby_pin` |
 | Left encoder A / B | 17 / 27 | 11 / 13 | `left_encoder.pin_a` / `pin_b` |
 | Right encoder A / B | 23 / 24 | 16 / 18 | `right_encoder.pin_a` / `pin_b` |
 | BNO055 IMU SDA / SCL (I2C1, address 0x28) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu.yaml` |
 | RPLiDAR S3 | USB (`/dev/ttyUSB0`, 1 000 000 baud) | — | `lidar_serial_port` launch argument |
 
 Encoders and the IMU run from 3.3 V: the Pi's GPIO pins are not 5 V tolerant, so never pull encoder outputs
-up to 5 V (the internal pull-ups are enabled with `pull_up: true`). The reference repo's AIN2 (GPIO6),
-BIN2 (GPIO21) and STBY (GPIO26) pins are unused with the A4950.
+up to 5 V (the internal pull-ups are enabled with `pull_up: true`).
 
 Give the user access to `/dev/gpiochip*`, `/sys/class/pwm` and the LiDAR serial port (group membership
 or a udev rule, depending on the image; `dialout` covers the serial port), then build everything:
@@ -65,6 +65,8 @@ or a udev rule, depending on the image; `dialout` covers the serial port), then 
 sudo usermod -aG dialout $USER
 colcon build --symlink-install
 ```
+If CMake reports a non-existent libgpiod include path, the build cache points at an old install; rebuild
+with `colcon build --symlink-install --packages-select autonom_hardware --cmake-clean-cache`.
 
 **WSL2 base station** — use mirrored networking so the Pi can reach WSL directly. In `%UserProfile%\.wslconfig`:
 ```ini

@@ -52,12 +52,17 @@ MotorDriverNode::MotorDriverNode(const rclcpp::NodeOptions & options)
   left_pid_.emplace(gains);
   right_pid_.emplace(gains);
 
-  const A4950Config left_config = declareMotorConfig("left_motor", 0, 5);
-  const A4950Config right_config = declareMotorConfig("right_motor", 1, 20);
+  // TB6612FNG pinout (BCM): PWMA GPIO12 (PWM0 ch 0), AIN1 GPIO5, AIN2 GPIO6; PWMB GPIO13 (PWM0 ch 1),
+  // BIN1 GPIO20, BIN2 GPIO21; STBY GPIO26. Channel A drives the left motor, B the right.
+  const auto standby_pin = declareStandbyPin(*this, 26);
+  const Tb6612Config left_config = declareTb6612Config(*this, "left_motor", 0, 5, 6);
+  const Tb6612Config right_config = declareTb6612Config(*this, "right_motor", 1, 20, 21);
   try {
     const GpioChipPtr chip = openGpioChip(gpio_chip);
-    left_motor_ = std::make_unique<A4950Motor>(chip, left_config, "autonom_left_motor");
-    right_motor_ = std::make_unique<A4950Motor>(chip, right_config, "autonom_right_motor");
+    // STBY stays low (both channels off) until the control loop first drives the motors.
+    standby_ = std::make_unique<GpioOutput>(chip, standby_pin, "autonom_motor_standby", false);
+    left_motor_ = std::make_unique<Tb6612Motor>(chip, left_config, "autonom_left_motor");
+    right_motor_ = std::make_unique<Tb6612Motor>(chip, right_config, "autonom_right_motor");
   } catch (const std::exception & error) {
     RCLCPP_FATAL(get_logger(), "Motor hardware initialisation failed: %s", error.what());
     throw;
@@ -73,34 +78,13 @@ MotorDriverNode::MotorDriverNode(const rclcpp::NodeOptions & options)
   control_timer_ = create_wall_timer(
     std::chrono::duration<double>(1.0 / control_frequency), [this] { controlLoop(); });
 
-  RCLCPP_INFO(get_logger(), "A4950 motor driver running at %.1f Hz", control_frequency);
+  RCLCPP_INFO(get_logger(), "TB6612FNG motor driver running at %.1f Hz", control_frequency);
 }
 
 MotorDriverNode::~MotorDriverNode()
 {
   control_timer_.reset();
   stopMotors();
-}
-
-A4950Config MotorDriverNode::declareMotorConfig(
-  const std::string & prefix, int default_channel, int default_direction_pin)
-{
-  A4950Config config;
-  config.pwm_chip_path = declareParameter<std::string>(
-    *this, prefix + ".pwm_chip", "/sys/class/pwm/pwmchip0", "sysfs PWM chip driving IN1");
-  const auto pwm_channel = declareParameter<std::int64_t>(
-    *this, prefix + ".pwm_channel", default_channel, "PWM channel on pwm_chip driving IN1");
-  if (pwm_channel < 0 || pwm_channel > 15) {
-    throw std::invalid_argument(prefix + ".pwm_channel must be in [0, 15]");
-  }
-  config.pwm_channel = static_cast<unsigned int>(pwm_channel);
-  config.direction_pin =
-    static_cast<unsigned int>(declarePin(*this, prefix + ".direction_pin", default_direction_pin, "A4950 IN2 pin"));
-  config.pwm_frequency_hz = declareParameter<double>(
-    *this, prefix + ".pwm_frequency_hz", 20000.0, "PWM carrier frequency; 20 kHz keeps it above audible range");
-  config.inverted =
-    declareParameter<bool>(*this, prefix + ".inverted", false, "Reverse motor polarity to match mounting");
-  return config;
 }
 
 PidGains MotorDriverNode::declarePidGains()
@@ -215,7 +199,8 @@ void MotorDriverNode::controlLoop()
   const double right_effort = right_pid_->update(target.right, measured_.right, control_dt);
   motors_active_ = true;
 
-  if (!left_motor_->setEffort(left_effort) || !right_motor_->setEffort(right_effort)) {
+  const bool enabled = standby_->set(true);
+  if (!left_motor_->setEffort(left_effort) || !right_motor_->setEffort(right_effort) || !enabled) {
     RCLCPP_ERROR_THROTTLE(get_logger(), steady_clock_, kWarnThrottleMs, "Failed to write motor outputs");
   }
 }
@@ -229,6 +214,9 @@ void MotorDriverNode::stopMotors()
   motors_active_ = false;
   if (left_motor_ && right_motor_ && !(left_motor_->coast() && right_motor_->coast())) {
     RCLCPP_ERROR_THROTTLE(get_logger(), steady_clock_, kWarnThrottleMs, "Failed to coast motors");
+  }
+  if (standby_ && !standby_->set(false)) {
+    RCLCPP_ERROR_THROTTLE(get_logger(), steady_clock_, kWarnThrottleMs, "Failed to put the TB6612 in standby");
   }
 }
 

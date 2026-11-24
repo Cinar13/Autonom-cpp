@@ -10,4 +10,4 @@
     *   Wheel Encoders (Quadrature count via RPi 5 GPIO interrupts).
     *   Planar Laser Odometry (`rf2o_laser_odometry`).
     *   IMU (Optional. Software stack must dynamically enable/disable it).
-*   **Motor Driver:** Dual A4950 H-bridge drivers. Driven via PWM and Direction GPIO pins from the RPi 5.
+*   **Motor Driver:** TB6612FNG dual H-bridge (VM 6 V from a buck regulator, logic at 3.3 V). Per motor one hardware PWM pin and two direction GPIOs (IN1/IN2) from the RPi 5, plus a shared STBY pin.

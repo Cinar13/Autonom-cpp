@@ -1,8 +1,9 @@
 """Real-robot hardware: robot description, motor/encoder drivers, RPLiDAR S3 and the optional IMU."""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import ComposableNodeContainer, Node
 from launch_ros.descriptions import ComposableNode, ParameterValue
@@ -89,4 +90,18 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, lidar, imu])
+    # PWM and GPIO levels outlive the process: if the container crashes or is killed, the motors would keep the
+    # last command. Stop them from a fresh process, with the motor driver's own parameters (name 'motor_driver').
+    # On a normal shutdown the drivers' destructors have already stopped them and launch starts nothing new.
+    motor_safe_stop = RegisterEventHandler(OnProcessExit(
+        target_action=hardware_container,
+        on_exit=[Node(
+            package='autonom_hardware',
+            executable='motor_safe_stop',
+            name='motor_driver',
+            parameters=[hardware_params],
+            output='screen',
+        )],
+    ))
+
+    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, motor_safe_stop, lidar, imu])

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <functional>
 #include <stdexcept>
+#include <utility>
 
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
@@ -257,9 +258,12 @@ void LoopPatrolNode::planAndSend()
     RCLCPP_INFO(get_logger(), "Start line at (%.2f, %.2f), race heading %.2f rad", pose->x, pose->y, pose->yaw);
   }
   // Wall-aware start zone from the latest map: a passage behind a wall is never "at the start line".
-  start_zone_ = startZoneMask(*grid, *start_line_, start_line_half_width_, start_monitor_->depth(),
+  // Keep the previous zone when this map has none: the installed zone test indexes start_zone_ with
+  // zone_grid_'s geometry, so the two must only ever change together.
+  auto zone = startZoneMask(*grid, *start_line_, start_line_half_width_, start_monitor_->depth(),
     settings_.free_threshold);
-  if (!start_zone_.empty()) {
+  if (!zone.empty()) {
+    start_zone_ = std::move(zone);
     zone_grid_ = grid;
     zone_grid_->data.clear();  // geometry only
     start_monitor_->zone = [this](Point p) {

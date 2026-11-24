@@ -9,14 +9,15 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 
-#include "autonom_hardware/a4950_motor.hpp"
+#include "autonom_hardware/tb6612_motor.hpp"
+#include "autonom_hardware/gpio.hpp"
 #include "autonom_hardware/diff_drive_kinematics.hpp"
 #include "autonom_hardware/pid_controller.hpp"
 
 namespace autonom_hardware
 {
 
-/// Closed-loop wheel velocity control: /cmd_vel -> per-wheel PID on encoder feedback -> A4950 PWM.
+/// Closed-loop wheel velocity control: /cmd_vel -> per-wheel PID on encoder feedback -> TB6612FNG PWM.
 class MotorDriverNode : public rclcpp::Node
 {
 public:
@@ -24,7 +25,6 @@ public:
   ~MotorDriverNode() override;
 
 private:
-  A4950Config declareMotorConfig(const std::string & prefix, int default_channel, int default_direction_pin);
   PidGains declarePidGains();
   rcl_interfaces::msg::SetParametersResult onParametersChanged(const std::vector<rclcpp::Parameter> & parameters);
 
@@ -34,8 +34,10 @@ private:
   void stopMotors();
 
   std::optional<DiffDriveKinematics> kinematics_;
-  std::unique_ptr<A4950Motor> left_motor_;
-  std::unique_ptr<A4950Motor> right_motor_;
+  // Declared before the motors so it is destroyed after them: the GpioOutput destructor drives STBY low.
+  std::unique_ptr<GpioOutput> standby_;
+  std::unique_ptr<Tb6612Motor> left_motor_;
+  std::unique_ptr<Tb6612Motor> right_motor_;
   std::optional<PidController> left_pid_;
   std::optional<PidController> right_pid_;
 
