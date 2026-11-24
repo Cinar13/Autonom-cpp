@@ -80,6 +80,50 @@ if(BUILD_TESTING)
   target_link_libraries(test_pid_controller ${PROJECT_NAME}_core)
   ament_add_gtest(test_button_debouncer test/test_button_debouncer.cpp)
   target_link_libraries(test_button_debouncer ${PROJECT_NAME}_core)
+
+  # Same sources linked against test/fakes/fake_gpiod.cpp instead of libgpiod, so GPIO-facing code runs here
+  # without a Pi (or root for gpio-sim). PWM tests point the sysfs path at a temporary directory.
+  add_library(${PROJECT_NAME}_core_fake STATIC
+    src/gpio.cpp
+    src/pwm_channel.cpp
+    src/tb6612_motor.cpp
+    src/quadrature_encoder.cpp
+    src/pid_controller.cpp
+    src/diff_drive_kinematics.cpp
+    src/button_debouncer.cpp
+    test/fakes/fake_gpiod.cpp
+  )
+  target_include_directories(${PROJECT_NAME}_core_fake PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/fakes
+    ${GPIOD_INCLUDE_DIRS}
+  )
+  target_link_libraries(${PROJECT_NAME}_core_fake PUBLIC pthread)
+
+  foreach(test_name test_gpio test_pwm_channel test_tb6612_motor test_quadrature_encoder)
+    ament_add_gtest(${test_name} test/${test_name}.cpp TIMEOUT 60)
+    target_link_libraries(${test_name} ${PROJECT_NAME}_core_fake)
+  endforeach()
+
+  ament_add_gtest(test_hardware_nodes
+    test/test_hardware_nodes.cpp
+    src/motor_driver_node.cpp
+    src/wheel_odometry_node.cpp
+    src/start_button_node.cpp
+    TIMEOUT 120
+  )
+  target_compile_definitions(test_hardware_nodes PRIVATE
+    HARDWARE_YAML="${CMAKE_CURRENT_SOURCE_DIR}/config/hardware.yaml")
+  target_link_libraries(test_hardware_nodes
+    ${PROJECT_NAME}_core_fake
+    rclcpp::rclcpp
+    rclcpp_components::component
+    ${geometry_msgs_TARGETS}
+    ${nav_msgs_TARGETS}
+    ${sensor_msgs_TARGETS}
+    ${std_msgs_TARGETS}
+    tf2_ros::tf2_ros
+  )
 endif()
 
 ament_package()

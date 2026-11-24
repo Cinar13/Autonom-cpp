@@ -103,8 +103,9 @@ bool PwmChannel::setDutyCycle(double fraction) noexcept
   if (duty_ns == duty_ns_) {
     return true;
   }
+  // Trailing newline as `echo` writes it: sysfs accepts it, and it terminates the value in a plain test file.
   char buffer[24];
-  const int length = std::snprintf(buffer, sizeof(buffer), "%llu", static_cast<unsigned long long>(duty_ns));
+  const int length = std::snprintf(buffer, sizeof(buffer), "%llu\n", static_cast<unsigned long long>(duty_ns));
   if (length <= 0 || ::pwrite(duty_fd_, buffer, static_cast<size_t>(length), 0) != length) {
     return false;
   }
