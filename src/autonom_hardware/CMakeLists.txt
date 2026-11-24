@@ -12,6 +12,7 @@ find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GPIOD REQUIRED IMPORTED_TARGET libgpiod>=1.6)
@@ -26,6 +27,7 @@ add_library(${PROJECT_NAME}_core SHARED
   src/quadrature_encoder.cpp
   src/pid_controller.cpp
   src/diff_drive_kinematics.cpp
+  src/button_debouncer.cpp
 )
 target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -36,6 +38,7 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC PkgConfig::GPIOD pthread)
 add_library(${PROJECT_NAME}_nodes SHARED
   src/motor_driver_node.cpp
   src/wheel_odometry_node.cpp
+  src/start_button_node.cpp
 )
 target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${PROJECT_NAME}_core
@@ -44,6 +47,7 @@ target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${geometry_msgs_TARGETS}
   ${nav_msgs_TARGETS}
   ${sensor_msgs_TARGETS}
+  ${std_msgs_TARGETS}
   tf2_ros::tf2_ros
 )
 
@@ -54,6 +58,10 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::WheelOdometryNode"
   EXECUTABLE wheel_odometry_node
+)
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::StartButtonNode"
+  EXECUTABLE start_button_node
 )
 
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
@@ -70,6 +78,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_diff_drive_kinematics ${PROJECT_NAME}_core)
   ament_add_gtest(test_pid_controller test/test_pid_controller.cpp)
   target_link_libraries(test_pid_controller ${PROJECT_NAME}_core)
+  ament_add_gtest(test_button_debouncer test/test_button_debouncer.cpp)
+  target_link_libraries(test_button_debouncer ${PROJECT_NAME}_core)
 endif()
 
 ament_package()

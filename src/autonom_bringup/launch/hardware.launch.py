@@ -1,4 +1,4 @@
-"""Real-robot hardware: robot description, motor/encoder drivers, RPLiDAR S3 and the optional IMU."""
+"""Real-robot hardware: robot description, motor/encoder drivers, start button, RPLiDAR S3 and the optional IMU."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -60,6 +60,13 @@ def generate_launch_description():
                 name='motor_driver',
                 parameters=[hardware_params],
                 extra_arguments=[{'use_intra_process_comms': True}],
+            ),
+            # Publishes /race/start_signal on each press; race_start_gate applies the 5 s delay.
+            ComposableNode(
+                package='autonom_hardware',
+                plugin='autonom_hardware::StartButtonNode',
+                name='start_button',
+                parameters=[hardware_params],
             ),
         ],
     )

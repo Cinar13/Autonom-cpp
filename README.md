@@ -51,13 +51,16 @@ motor and channel B the right.
 | Right motor PWMB (PWM0 ch 1) | 13 | 33 | `right_motor.pwm_channel: 1` |
 | Right motor BIN1 / BIN2 | 20 / 21 | 38 / 40 | `right_motor.in1_pin` / `in2_pin` |
 | TB6612 STBY (high = enabled) | 26 | 37 | `standby_pin` |
+| Start button (other side to GND) | 16 | 36 | `start_button.pin` |
 | Left encoder A / B | 17 / 27 | 11 / 13 | `left_encoder.pin_a` / `pin_b` |
 | Right encoder A / B | 23 / 24 | 16 / 18 | `right_encoder.pin_a` / `pin_b` |
 | BNO055 IMU SDA / SCL (I2C1, address 0x28) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu.yaml` |
 | RPLiDAR S3 | USB (`/dev/ttyUSB0`, 1 000 000 baud) | — | `lidar_serial_port` launch argument |
 
 Encoders and the IMU run from 3.3 V: the Pi's GPIO pins are not 5 V tolerant, so never pull encoder outputs
-up to 5 V (the internal pull-ups are enabled with `pull_up: true`).
+up to 5 V (the internal pull-ups are enabled with `pull_up: true`). The start button uses the internal pull-up
+too (pressed = low, 30 ms debounce) and publishes `/race/start_signal`; it must be seen released once after
+start-up before a press counts, so a stuck or shorted button can never start the race.
 
 Give the user access to `/dev/gpiochip*`, `/sys/class/pwm` and the LiDAR serial port (group membership
 or a udev rule, depending on the image; `dialout` covers the serial port), then build everything:

@@ -3,7 +3,7 @@
 <package format="3">
   <name>autonom_hardware</name>
   <version>0.1.0</version>
-  <description>Raspberry Pi 5 hardware interface: TB6612FNG motor driver and quadrature wheel odometry.</description>
+  <description>Raspberry Pi 5 hardware interface: TB6612FNG motor driver, quadrature wheel odometry and the start button.</description>
   <maintainer email="cinarozturk198@gmail.com">Çınar Öztürk</maintainer>
   <license>Apache-2.0</license>
 
@@ -15,6 +15,7 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>libgpiod-dev</depend>
 

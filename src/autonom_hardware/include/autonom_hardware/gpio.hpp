@@ -30,4 +30,22 @@ private:
   bool value_;
 };
 
+/// Input line, optionally with the internal pull-up (for a switch to GND: pressed reads low).
+class GpioInput
+{
+public:
+  GpioInput(GpioChipPtr chip, unsigned int offset, const std::string & consumer, bool pull_up);
+  ~GpioInput();
+
+  GpioInput(const GpioInput &) = delete;
+  GpioInput & operator=(const GpioInput &) = delete;
+
+  /// 0 or 1, or -1 on a read failure.
+  [[nodiscard]] int read() noexcept;
+
+private:
+  GpioChipPtr chip_;
+  gpiod_line * line_;
+};
+
 }  // namespace autonom_hardware

@@ -45,4 +45,26 @@ bool GpioOutput::set(bool value) noexcept
   return true;
 }
 
+GpioInput::GpioInput(GpioChipPtr chip, unsigned int offset, const std::string & consumer, bool pull_up)
+: chip_(std::move(chip)), line_(gpiod_chip_get_line(chip_.get(), offset))
+{
+  if (line_ == nullptr) {
+    throw std::system_error(errno, std::generic_category(), "GPIO line " + std::to_string(offset) + " not found");
+  }
+  const int flags = pull_up ? GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP : GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
+  if (gpiod_line_request_input_flags(line_, consumer.c_str(), flags) < 0) {
+    throw std::system_error(errno, std::generic_category(), "Failed to request GPIO " + std::to_string(offset) + " as input");
+  }
+}
+
+GpioInput::~GpioInput()
+{
+  gpiod_line_release(line_);
+}
+
+int GpioInput::read() noexcept
+{
+  return gpiod_line_get_value(line_);
+}
+
 }  // namespace autonom_hardware

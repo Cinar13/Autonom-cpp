@@ -5,6 +5,7 @@
 #   left  motor (TB6612 channel A): PWMA GPIO12 / 32, AIN1 GPIO5 / 29, AIN2 GPIO6 / 31;  encoder A GPIO17 / 11, B GPIO27 / 13
 #   right motor (TB6612 channel B): PWMB GPIO13 / 33, BIN1 GPIO20 / 38, BIN2 GPIO21 / 40; encoder A GPIO23 / 16, B GPIO24 / 18
 #   TB6612 STBY GPIO26 / 37 (shared, high = enabled)
+#   Start button GPIO16 / 36, other side to GND (internal pull-up, pressed = low)
 #   BNO055 IMU on I2C1 (SDA GPIO2 / 3, SCL GPIO3 / 5), address 0x28; RPLiDAR S3 on USB (/dev/ttyUSB0).
 
 /**:
@@ -65,3 +66,10 @@ wheel_odometry:
     pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e6, 1.0e6, 1.0e6, 1.0e-2]
     twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e6, 1.0e6, 1.0e6, 2.0e-2]
 
+start_button:
+  ros__parameters:
+    pin: 16
+    pull_up: true
+    active_low: true
+    poll_period_ms: 5
+    debounce_ms: 30
