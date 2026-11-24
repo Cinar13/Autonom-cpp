@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -146,6 +147,35 @@ TEST_F(HardwareNodesTest, AllNodesShareOneProcessWithTheSchematicPinout)
     EXPECT_EQ(pwm_.readNumber(channel, "period"), 50000);
     EXPECT_EQ(pwm_.readNumber(channel, "duty_cycle"), 0);
   }
+}
+
+TEST_F(HardwareNodesTest, CodeDefaultsMatchTheSchematicWithoutTheParamsFile)
+{
+  // A node started without hardware.yaml (e.g. `ros2 run`) must still use the schematic's pins.
+  rclcpp::NodeOptions bare;
+  bare.use_global_arguments(false);
+  bare.parameter_overrides({{"left_motor.pwm_chip", pwm_.path()}, {"right_motor.pwm_chip", pwm_.path()}});
+  autonom_hardware::WheelOdometryNode odometry(bare);
+  autonom_hardware::MotorDriverNode motors(bare);
+  autonom_hardware::StartButtonNode button(bare);
+
+  const std::map<unsigned int, std::string> expected{
+    {kAin1, "autonom_left_motor_in1"}, {kAin2, "autonom_left_motor_in2"},
+    {kBin1, "autonom_right_motor_in1"}, {kBin2, "autonom_right_motor_in2"},
+    {kStby, "autonom_motor_standby"},
+    {kLeftEncA, "autonom_left_encoder"}, {kLeftEncB, "autonom_left_encoder"},
+    {kRightEncA, "autonom_right_encoder"}, {kRightEncB, "autonom_right_encoder"},
+    {kStartButton, "autonom_start_button"}};
+  for (unsigned int pin = 0; pin < fake_gpiod::kNumLines; ++pin) {
+    const auto it = expected.find(pin);
+    if (it == expected.end()) {
+      EXPECT_EQ(fake_gpiod::line(pin).mode, Mode::kFree) << "GPIO" << pin << " claimed by default";
+    } else {
+      EXPECT_EQ(fake_gpiod::line(pin).consumer, it->second) << "GPIO" << pin;
+    }
+  }
+  EXPECT_EQ(pwm_.readNumber(kPwmLeft, "enable"), 1);
+  EXPECT_EQ(pwm_.readNumber(kPwmRight, "enable"), 1);
 }
 
 class MotorDriverTest : public HardwareNodesTest

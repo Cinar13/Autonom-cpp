@@ -105,6 +105,14 @@ if(BUILD_TESTING)
     target_link_libraries(${test_name} ${PROJECT_NAME}_core_fake)
   endforeach()
 
+  find_package(yaml_cpp_vendor REQUIRED)
+  find_package(yaml-cpp REQUIRED)
+  ament_add_gtest(test_pinout test/test_pinout.cpp)
+  target_compile_definitions(test_pinout PRIVATE
+    HARDWARE_YAML="${CMAKE_CURRENT_SOURCE_DIR}/config/hardware.yaml"
+    SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(test_pinout yaml-cpp::yaml-cpp)
+
   ament_add_gtest(test_hardware_nodes
     test/test_hardware_nodes.cpp
     src/motor_driver_node.cpp
