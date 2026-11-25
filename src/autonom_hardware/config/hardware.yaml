@@ -58,6 +58,6 @@ wheel_odometry:
       pin_b: 24
       inverted: true
       pull_up: true
-    pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e6, 1.0e6, 1.0e6, 1.0e-2]
-    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e6, 1.0e6, 1.0e6, 2.0e-2]
+    pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e+6, 1.0e+6, 1.0e+6, 1.0e-2]
+    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-2]
 
