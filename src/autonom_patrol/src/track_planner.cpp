@@ -482,4 +482,163 @@ Mask startZoneMask(const Grid & grid, const StartLine & line, double half_width,
   return reachableFrom(free, grid.width, grid.height, *seed);
 }
 
+std::optional<std::pair<Point, double>> trailPointBehind(const std::vector<Point> & trail, double distance)
+{
+  if (trail.size() < 2) {
+    return std::nullopt;
+  }
+  double remaining = std::max(distance, 0.0);
+  for (std::size_t i = trail.size() - 1; i > 0; --i) {
+    const Point & ahead = trail[i];
+    const Point & behind = trail[i - 1];
+    const double length = std::hypot(ahead.x - behind.x, ahead.y - behind.y);
+    const double direction = std::atan2(ahead.y - behind.y, ahead.x - behind.x);
+    if (length > 0.0 && (remaining <= length || i == 1)) {
+      const double t = std::min(remaining / length, 1.0);
+      return std::pair{Point{ahead.x - t * (ahead.x - behind.x), ahead.y - t * (ahead.y - behind.y)}, direction};
+    }
+    remaining -= length;
+  }
+  return std::nullopt;  // every segment has zero length
+}
+
+std::vector<bool> shortStraightSegments(const std::vector<Waypoint> & lap, double corner_angle, double max_length)
+{
+  const std::size_t n = lap.size();
+  std::vector<bool> short_segment(n, false);
+  if (n < 3) {
+    return short_segment;
+  }
+  std::vector<double> length(n);
+  std::vector<double> direction(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const Waypoint & a = lap[i];
+    const Waypoint & b = lap[(i + 1) % n];
+    length[i] = std::hypot(b.x - a.x, b.y - a.y);
+    direction[i] = std::atan2(b.y - a.y, b.x - a.x);
+  }
+  // corner[i]: the lap turns at waypoint i, between segment i - 1 and segment i.
+  std::vector<bool> corner(n, false);
+  std::optional<std::size_t> first_corner;
+  for (std::size_t i = 0; i < n; ++i) {
+    const double turn = std::remainder(direction[i] - direction[(i + n - 1) % n], 2.0 * M_PI);
+    corner[i] = std::abs(turn) > corner_angle;
+    if (corner[i] && !first_corner) {
+      first_corner = i;
+    }
+  }
+  if (!first_corner) {
+    double total = 0.0;
+    for (double l : length) {
+      total += l;
+    }
+    std::fill(short_segment.begin(), short_segment.end(), total < max_length);
+    return short_segment;
+  }
+  // Walk once round the ring from a corner, closing each straight at the next corner.
+  std::vector<std::size_t> run;
+  double run_length = 0.0;
+  for (std::size_t k = 0; k <= n; ++k) {
+    const std::size_t i = (*first_corner + k) % n;
+    if (!run.empty() && (corner[i] || k == n)) {
+      if (run_length < max_length) {
+        for (std::size_t s : run) {
+          short_segment[s] = true;
+        }
+      }
+      run.clear();
+      run_length = 0.0;
+    }
+    if (k < n) {
+      run.push_back(i);
+      run_length += length[i];
+    }
+  }
+  return short_segment;
+}
+
+std::vector<double> distanceToNextCorner(const std::vector<Waypoint> & lap, double corner_angle)
+{
+  const std::size_t n = lap.size();
+  std::vector<double> distance(n, std::numeric_limits<double>::infinity());
+  if (n < 3) {
+    return distance;
+  }
+  std::vector<double> length(n);
+  std::vector<double> direction(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const Waypoint & a = lap[i];
+    const Waypoint & b = lap[(i + 1) % n];
+    length[i] = std::hypot(b.x - a.x, b.y - a.y);
+    direction[i] = std::atan2(b.y - a.y, b.x - a.x);
+  }
+  std::vector<bool> corner(n, false);  // the lap turns at waypoint i
+  std::optional<std::size_t> any_corner;
+  for (std::size_t i = 0; i < n; ++i) {
+    corner[i] = std::abs(std::remainder(direction[i] - direction[(i + n - 1) % n], 2.0 * M_PI)) > corner_angle;
+    if (corner[i]) {
+      any_corner = i;
+    }
+  }
+  if (!any_corner) {
+    return distance;
+  }
+  // Walk backwards twice round the ring from a corner: segment i ends at waypoint i + 1.
+  double to_corner = 0.0;
+  for (std::size_t k = 0; k < 2 * n; ++k) {
+    const std::size_t i = (*any_corner + 2 * n - 1 - k) % n;
+    const std::size_t end = (i + 1) % n;
+    to_corner = corner[end] ? 0.0 : to_corner;
+    distance[i] = to_corner;
+    to_corner += length[i];
+  }
+  return distance;
+}
+
+std::vector<double> sectionSpeeds(const std::vector<Waypoint> & lap, const SectionSpeedSettings & settings)
+{
+  std::vector<double> speed(lap.size(), settings.race_speed);
+  if (settings.short_straight_speed > 0.0 && settings.short_straight_length > 0.0) {
+    const auto short_segment = shortStraightSegments(lap, settings.corner_angle, settings.short_straight_length);
+    for (std::size_t i = 0; i < lap.size(); ++i) {
+      if (short_segment[i]) {
+        speed[i] = std::min(speed[i], settings.short_straight_speed);
+      }
+    }
+  }
+  if (settings.corner_approach_speed > 0.0 && settings.corner_approach_distance > 0.0) {
+    const auto to_corner = distanceToNextCorner(lap, settings.corner_angle);
+    for (std::size_t i = 0; i < lap.size(); ++i) {
+      if (to_corner[i] < settings.corner_approach_distance) {
+        speed[i] = std::min(speed[i], settings.corner_approach_speed);
+      }
+    }
+  }
+  return speed;
+}
+
+std::optional<std::size_t> nearestSegment(const std::vector<Waypoint> & lap, Point p)
+{
+  const std::size_t n = lap.size();
+  if (n < 2) {
+    return std::nullopt;
+  }
+  std::optional<std::size_t> best;
+  double best_distance = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < n; ++i) {
+    const Waypoint & a = lap[i];
+    const Waypoint & b = lap[(i + 1) % n];
+    const double dx = b.x - a.x;
+    const double dy = b.y - a.y;
+    const double length2 = dx * dx + dy * dy;
+    const double t = length2 > 0.0 ? std::clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / length2, 0.0, 1.0) : 0.0;
+    const double distance = std::hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
+    if (distance < best_distance) {
+      best_distance = distance;
+      best = i;
+    }
+  }
+  return best;
+}
+
 }  // namespace autonom_patrol

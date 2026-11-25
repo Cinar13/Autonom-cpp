@@ -1,0 +1,8 @@
+# TurtleBot3 delta for fibonacci_simulation.launch.py controller:=mppi, layered over
+# autonom_bringup/config/nav2_mppi.yaml (RPP mapping lap, MPPI race; the tuning and its measurements are there).
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      # docs/06 hard margin for the TurtleBot3 (r 0.105 + 20 mm, rounded): CostCritic treats the inscribed zone as
+      # collision. The robot overlay's 0.17 m is sized for its own 0.15 m radius.
+      robot_radius: 0.13

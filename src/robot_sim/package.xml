@@ -12,6 +12,8 @@
 
   <exec_depend>autonom_bringup</exec_depend>
   <exec_depend>autonom_description</exec_depend>
+  <exec_depend>autonom_hardware</exec_depend>
+  <exec_depend>nav2_graceful_controller</exec_depend>
   <exec_depend>autonom_localization</exec_depend>
   <exec_depend>turtlebot3_description</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>

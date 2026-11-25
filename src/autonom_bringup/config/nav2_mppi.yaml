@@ -1,0 +1,129 @@
+# Nav2 overlay for controller:=mppi (bringup.launch.py on the robot; fibonacci_simulation.launch.py adds
+# robot_sim/config/nav2_mppi.yaml for the TurtleBot3 on top). The mapping lap runs on Regulated Pure Pursuit
+# (FollowPath, unchanged), the race on Nav2's MPPI controller (RaceFollowPath). loop_patrol switches to it when fast
+# mode starts (race_controller -> the race BT's ControllerSelector). MPPI-only tunings that drive faster kept leaving
+# the exploration stuck after the middle hairpin ("No reachable loop or frontier"); RPP never did.
+# MPPI samples 1000 trajectories over a 1.0 s horizon every cycle and picks the cheapest (path tracking, wall cost,
+# forward driving), so it plans its own braking into corners and drives arcs instead of stop-turn-go.
+# Acceleration limits are symmetric (3 m/s^2) on purpose: MPPI draws new noise at every time step, so each sample's
+# speed is a random walk bounded by ax_max / ax_min. With ax_max 1.0 against ax_min -3.0 (and vx_min -0.15) the samples
+# could gain only 0.05 m/s per step but lose 0.15: they reached 0.08 m forward and 0.26 m backward in 1.5 s, and the
+# robot crawled at <= 0.07 m/s. The velocity smoother and Gazebo still limit the real acceleration.
+# loop_patrol sets the race speed live through RaceFollowPath.vx_max (race_speed_parameter).
+controller_server:
+  ros__parameters:
+    controller_plugins: ["FollowPath", "RaceFollowPath"]
+    FollowPath:
+      # RPP reads the same local costmap, whose inflation is MPPI's (below): keep its cost model in step.
+      inflation_cost_scaling_factor: 5.0
+    RaceFollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      # 1.0 s horizon (20 x 0.05 s): at 1.5 s the samples reached past the next turn of the 0.6 m corridors, the robot
+      # turned in for corners far too early, and fast samples ended in walls.
+      time_steps: 20
+      model_dt: 0.05
+      batch_size: 1000  # 2000 dropped the loop to 6-11 Hz in the GUI sim (model_dt assumes 20 Hz)
+      iteration_count: 1
+      vx_max: 0.6
+      vx_min: 0.0  # never reverse (as RPP); BackUp recovery is a separate behaviour
+      vy_max: 0.0
+      wz_max: 3.0
+      ax_max: 3.0
+      ax_min: -3.0
+      az_max: 5.0
+      vx_std: 0.3
+      vy_std: 0.0
+      # Wide turn noise: the samples must be able to bend into the 0.3 m hairpins at speed (~3 rad/s at 1 m/s). With
+      # 0.2 every fast sample ran into a wall, only slow ones survived, and the race ran at <= 0.3 m/s (cruise 1.2).
+      wz_std: 1.0
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      prune_distance: 3.0
+      transform_tolerance: 0.2
+      enforce_path_inversion: false
+      regenerate_noises: true
+      visualize: false
+      # threshold_to_consider 0.35 m on every critic (Nav2 defaults 1.4 / 0.5): the patrol's exploration goals are only
+      # ~0.5 m ahead, so with the defaults the path critics were always off and GoalCritic steered straight at a goal
+      # behind the hairpin walls. The robot stalled, backed up and retried (27 progress failures, mapping never ended).
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic",
+                "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.35
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.35
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.35
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        # 200 (default 253): samples within ~0.18 m of a wall get critical_cost on top, the corridor centre is
+        # untouched. With PathFollow 11 it cut the time inside the 0.13 m margin (TurtleBot3 sim) from 2.9 % to 0.1 %
+        # and gained a lap (8 laps, 11.0-12.4 s); cost_power 2 instead froze the robot (stopped 29 %).
+        near_collision_cost: 200
+        critical_cost: 300.0
+        consider_footprint: false
+        collision_cost: 1000000.0
+        near_goal_distance: 1.0
+        trajectory_point_step: 2
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.35
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        # 11 (Nav2 default 5): the pull along the path is MPPI's only reason to drive fast. 5: 5 laps at 1.2 m/s
+        # (17.9-21.1 s), 8: 6 laps, 11: 7 laps. Race only: with 11 MPPI never finished the mapping lap.
+        enabled: true
+        cost_power: 1
+        cost_weight: 11.0
+        offset_from_furthest: 5
+        threshold_to_consider: 0.35
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.35
+        max_angle_to_furthest: 1.0
+        mode: 0
+
+# MPPI's 1.0 s horizon reaches 1.4 m at 1.4 m/s: a bigger local window keeps those trajectories on the costmap.
+# CostCritic reads only the local costmap. With the 0.18 m inflation (0.07 m beyond the robot radius) it had no
+# gradient towards the corridor centre: MPPI cut the first corner and parked 0.14 m from the wall. Inflating to the
+# 0.6 m corridor's half-width with a gentle slope pulls the samples to the middle. The global costmap (planner) is
+# unchanged.
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      width: 3
+      # docs/06 hard margin, robot_radius 0.15 + 20 mm: CostCritic treats the inscribed zone as collision.
+      robot_radius: 0.17
+      height: 3
+      inflation_layer:
+        inflation_radius: 0.30
+        cost_scaling_factor: 5.0
+
+loop_patrol:
+  ros__parameters:
+    race_controller: RaceFollowPath
+    race_speed_parameter: RaceFollowPath.vx_max

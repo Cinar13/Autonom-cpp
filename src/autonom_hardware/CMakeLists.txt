@@ -27,6 +27,7 @@ add_library(${PROJECT_NAME}_core SHARED
   src/quadrature_encoder.cpp
   src/pid_controller.cpp
   src/diff_drive_kinematics.cpp
+  src/encoder_model.cpp
   src/button_debouncer.cpp
 )
 target_include_directories(${PROJECT_NAME}_core PUBLIC
@@ -38,6 +39,7 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC PkgConfig::GPIOD pthread)
 add_library(${PROJECT_NAME}_nodes SHARED
   src/motor_driver_node.cpp
   src/wheel_odometry_node.cpp
+  src/sim_wheel_odometry_node.cpp
   src/start_button_node.cpp
 )
 target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
@@ -60,6 +62,8 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
   EXECUTABLE wheel_odometry_node
 )
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::SimWheelOdometryNode"
+  EXECUTABLE sim_wheel_odometry_node
   PLUGIN "autonom_hardware::StartButtonNode"
   EXECUTABLE start_button_node
 )
@@ -78,6 +82,8 @@ if(BUILD_TESTING)
   target_link_libraries(test_diff_drive_kinematics ${PROJECT_NAME}_core)
   ament_add_gtest(test_pid_controller test/test_pid_controller.cpp)
   target_link_libraries(test_pid_controller ${PROJECT_NAME}_core)
+  ament_add_gtest(test_encoder_model test/test_encoder_model.cpp)
+  target_link_libraries(test_encoder_model ${PROJECT_NAME}_core)
   ament_add_gtest(test_button_debouncer test/test_button_debouncer.cpp)
   target_link_libraries(test_button_debouncer ${PROJECT_NAME}_core)
 
@@ -91,6 +97,7 @@ if(BUILD_TESTING)
     src/pid_controller.cpp
     src/diff_drive_kinematics.cpp
     src/button_debouncer.cpp
+    src/encoder_model.cpp
     test/fakes/fake_gpiod.cpp
   )
   target_include_directories(${PROJECT_NAME}_core_fake PUBLIC

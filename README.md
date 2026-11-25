@@ -1,37 +1,55 @@
-# Autonom — ROS 2 Jazzy autonomous mapping & looping robot
+# Autonom — ROS 2 Jazzy autonomous mapping & racing robot
 
-Raspberry Pi 5 robot (TB6612FNG motor driver, quadrature encoders, RPLiDAR S3, optional BNO055 IMU) that maps an
-unknown environment with `slam_toolbox` and patrols continuous loops around the explored area with Nav2.
-RViz runs on a WSL2 base station only. A Gazebo Harmonic simulation (TurtleBot3 Burger placeholder on the
-`circuit2` track) runs the identical autonomy pipeline with `use_sim_time:=true`.
+Raspberry Pi 5 robot (TB6612FNG motor driver, 98 CPR × 14:1 quadrature encoders, RPLiDAR S3, optional BNO055 IMU) for the
+Fibonacci Robot Olympiad race: it maps the unknown track with `slam_toolbox` on its first lap, freezes the map and
+then races continuous laps with Nav2. A Gazebo Harmonic simulation of the race arena runs the identical autonomy
+pipeline with `use_sim_time:=true`; the base station (Ubuntu 24.04) runs the simulation and RViz.
 
-**Current state, open issues and the test plan: [`docs/HANDOFF.md`](docs/HANDOFF.md).**
+**Current state, open issues and the test plan: [`docs/HANDOFF.md`](docs/HANDOFF.md).** Latest results:
+[`docs/REPORT.md`](docs/REPORT.md).
 
 | Package | Role |
 |---|---|
 | `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → TB6612FNG PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`) |
-| `autonom_localization` | C++17 components: `OdometryCovarianceRelay` (adds covariance to rf2o / Gazebo odometry), `ScanDecimator` (thins S3 scans for rf2o) |
+| `autonom_localization` | C++17 components: odometry and IMU covariance relays, `ScanDecimator` (thins S3 scans for rf2o), `ScanSpeckleFilter` (drops isolated returns before the costmaps) |
+| `autonom_patrol` | C++17 loop patrol: track planner (exploration, laps by driving distance, rear gate, start line) and the Nav2 patrol node |
+| `autonom_race` | Competition rules in software: race start gate (5 s start delay, blocks `/cmd_vel` until then, race state) |
 | `autonom_description` | URDF/xacro (`base_footprint`, `base_link`, `laser`, `imu_link`, wheel joints); `gz_plugins.xacro` Gazebo macros incl. an RPLiDAR S3 sensor |
-| `autonom_bringup` | Launch files (`bringup` = `hardware` + `autonomy`), EKF / slam_toolbox / Nav2 / CycloneDDS / RViz config, `loop_patrol.py` |
-| `robot_sim` | Gazebo Harmonic: `circuit2_harmonic.sdf` world, `ros_gz_bridge` config, `tb3_simulation.launch.py`, sim Nav2 overlay |
+| `autonom_bringup` | Launch files (`bringup` = `hardware` + `autonomy`), EKF / slam_toolbox / Nav2 / patrol / CycloneDDS / RViz config, race behavior trees, Nav2 mode overlays |
+| `robot_sim` | Gazebo Harmonic: Fibonacci race arena (and the older `circuit2` track), `ros_gz_bridge` config, TurtleBot3 overlays, sim launch |
 | `turtlebot3_description` | Vendored Burger-only copy of ROBOTIS `turtlebot3_description` (Apache-2.0, see `VENDORED.md`) |
-| `rf2o_laser_odometry`, `sllidar_ros2` | Upstream submodules |
+| `rf2o_laser_odometry`, `sllidar_ros2` | Upstream submodules (unmodified) |
 
 ```
 [use_rf2o] /scan ─► decimator ─► rf2o ─► covariance relay ─► /rf2o/odom ─┐
-encoders (or Gazebo /odom ─► relay) ─► /wheel/odom ─────────────────────┼─► EKF ─► /odometry/filtered, TF odom→base_footprint
-[use_imu] bno055 (or Gazebo IMU) ─► /imu/data ───────────────────────────┘
-/scan ─► slam_toolbox ─► /map, TF map→odom ─► Nav2 ◄─ loop_patrol (waypoints from explored free space)
-Nav2 ─► /cmd_vel ─► motor_driver ◄─ /joint_states (wheel velocity feedback)
+encoders (sim: Gazebo wheel joints) ─► /wheel/odom ──────────────────────┼─► EKF ─► /odometry/filtered, TF odom→base_footprint
+[use_imu] bno055 (sim: Gazebo IMU ─► covariance relay) ─► /imu/data ─────┘
+/scan ─► slam_toolbox ─► /map, TF map→odom
+/scan ─► speckle filter ─► /scan_filtered ─► Nav2 costmaps
+loop_patrol ─► Nav2 (exploration goals, then one NavigateThroughPoses goal per lap)
+Nav2 ─► /cmd_vel_smoothed ─► race_start_gate ─► /cmd_vel ─► motor_driver (sim: Gazebo DiffDrive)
 ```
 
+The EKF is the only owner of `odom→base_footprint`; only `race_start_gate` publishes `/cmd_vel`.
+
 ## Setup
+
+One-shot on Ubuntu 24.04 (ROS 2 Jazzy, Gazebo Harmonic bridge, clone, rosdep, build):
+
+```bash
+bash scripts/install.sh --branch optimised
+```
+
+Or by hand:
 
 ```bash
 git clone --recurse-submodules git@github.com:Cinar13/Autonom-cpp.git ~/Autonom-cpp
 cd ~/Autonom-cpp
-sudo apt install -y ros-jazzy-rmw-cyclonedds-cpp
+sudo apt install -y ros-jazzy-ros-gz ros-jazzy-rmw-cyclonedds-cpp python3-rosdep
+source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y --skip-keys cmake_modules   # rf2o lists an obsolete ROS 1 key
+colcon build --symlink-install
+colcon test && colcon test-result --all
 ```
 
 **Raspberry Pi 5** — enable hardware PWM in `/boot/firmware/config.txt`, then reboot:
@@ -71,19 +89,6 @@ colcon build --symlink-install
 If CMake reports a non-existent libgpiod include path, the build cache points at an old install; rebuild
 with `colcon build --symlink-install --packages-select autonom_hardware --cmake-clean-cache`.
 
-**WSL2 base station** — use mirrored networking so the Pi can reach WSL directly. In `%UserProfile%\.wslconfig`:
-```ini
-[wsl2]
-networkingMode=mirrored
-```
-Run `wsl --shutdown`, then build everything (the simulation runs here too):
-```bash
-colcon build --symlink-install
-```
-WSL only: Mesa falls back to CPU rendering (`llvmpipe`), which makes Gazebo and RViz very slow. Routing
-OpenGL to the GPU via `GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA` restores speed but showed
-rendering issues in Gazebo/RViz (untested further). Native Ubuntu with the NVIDIA driver needs neither.
-
 ## CycloneDDS (both machines, `~/.bashrc`)
 
 ```bash
@@ -91,49 +96,87 @@ source /opt/ros/jazzy/setup.bash
 source ~/Autonom-cpp/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export AUTONOM_RPI_IP=192.168.1.50   # Raspberry Pi 5 LAN IP
-export AUTONOM_WSL_IP=192.168.1.60   # Windows host LAN IP (= WSL IP in mirrored mode)
+export AUTONOM_WSL_IP=192.168.1.60   # base station LAN IP (the name is a label left from the WSL2 days)
 export CYCLONEDDS_URI=file://$HOME/Autonom-cpp/install/autonom_bringup/share/autonom_bringup/config/cyclonedds.xml
 ```
-Allow UDP 7400–7700 inbound on the Windows firewall for the WSL network.
 
-## Run
-
-```bash
-# Raspberry Pi 5
-ros2 launch autonom_bringup bringup.launch.py                 # wheels + rf2o
-ros2 launch autonom_bringup bringup.launch.py use_imu:=true   # + BNO055 fused in the EKF
-ros2 launch autonom_bringup bringup.launch.py autonomous_loop:=false   # map/teleop only
-
-# WSL2
-ros2 launch autonom_bringup view.launch.py
-```
-
-Save the map: `ros2 run nav2_map_server map_saver_cli -f ~/maps/autonom`.
-
-## Simulation (WSL2, Gazebo Harmonic)
+## Run on the robot
 
 ```bash
-ros2 launch robot_sim tb3_simulation.launch.py                        # Gazebo GUI + RViz, TurtleBot3 Burger
-ros2 launch robot_sim tb3_simulation.launch.py gui:=false use_rviz:=false   # headless
-ros2 launch robot_sim tb3_simulation.launch.py use_rf2o:=true use_imu:=true # full sensor fusion
-# Swap the placeholder for the custom robot (single argument):
-ros2 launch robot_sim tb3_simulation.launch.py \
-  robot_urdf:=$(ros2 pkg prefix autonom_description)/share/autonom_description/urdf/autonom.urdf.xacro
+# Raspberry Pi 5 (no GUI application runs on the robot)
+scripts/start_robot.sh                         # wheels + rf2o, RPP + NavFn
+scripts/start_robot.sh --imu                   # + BNO055 fused in the EKF
+scripts/start_robot.sh --controller mppi       # RPP maps, MPPI races (see Nav2 modes)
+scripts/start_robot.sh --planner thetastar     # Theta* global planner
+scripts/start_robot.sh --map-only              # map/teleop only, no loop patrol
+
+# Base station (every GUI application, RViz included, is started from start_sim.sh)
+scripts/start_sim.sh --view                    # RViz on the real robot
 ```
 
-- `robot_urdf` is expanded with `sim:=true` and drives both `robot_state_publisher` and the Gazebo spawn; any
-  URDF that uses the `gz_plugins.xacro` macros works with the same bridge (`robot_sim/config/bridge.yaml`).
-- The simulated LiDAR matches the RPLiDAR S3 (3200 samples/rev at 10 Hz = 32 kHz, 0.1125°, 0.05–40 m), so
-  `slam_toolbox.yaml` is shared unchanged; `nav2_sim.yaml` only overrides the Burger's footprint and speed.
-- Bridged: `/clock`, `/scan`, `/cmd_vel`, `/odom` (relayed with covariance to `/wheel/odom`), `/joint_states`,
-  `/imu/data`. Gazebo DiffDrive's TF is bridged to `/sim/tf`, not `/tf`: the EKF is the single owner of
-  `odom→base_footprint`; `/tf_static` comes from `robot_state_publisher`.
-- rf2o is off by default in simulation (`use_rf2o:=false`) to save CPU; it stays on for the real robot.
-- `Circuit_ql_2` is vendored from gym-gazebo under GPL-3.0 (`robot_sim/models/Circuit_ql_2/VENDORED.md`).
+Nothing moves until the race starts: publish `std_msgs/Empty` on `/race/start_signal` (or `/race/start`); the
+start gate holds `/cmd_vel` for the 5 s start delay (`docs/06_competition_rules.md`), then the patrol explores the
+track, freezes the map after the first lap and races. `/race/stop_signal` stops it. The start button on GPIO16
+(`start_button` in `hardware.launch.py`) publishes `/race/start_signal`; an IR receiver driver is still missing.
 
-## Bring-up checklist
+## Simulation (base station, Gazebo Harmonic)
 
-1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` in `autonom_hardware/config/hardware.yaml`.
+```bash
+scripts/start_sim.sh                         # Fibonacci race arena: asks for the speeds, Gazebo GUI + RViz
+scripts/start_sim.sh --speed 1.2             # race laps at 1.2 m/s, no questions
+scripts/start_sim.sh --speed 0.6 controller:=mppi planner:=thetastar
+scripts/start_sim.sh robot:=autonom          # the real robot's model (default: TurtleBot3 Burger)
+scripts/start_sim.sh yaw:=3.1416             # race the other way round
+```
+## Simulation on one Machine
+
+```bash
+scripts/start_sim.sh robot:=tb3_fast --speed 1.2 --controller mppi --planner navfn
+```
+
+`start_sim.sh` wraps `ros2 launch robot_sim fibonacci_simulation.launch.py`; any of its arguments can be added
+(`robot:=tb3|tb3_fast|autonom`, `controller:=`, `planner:=`, speeds, accelerations). The race starts on launch
+(`auto_start`). The older `circuit2` track: `ros2 launch robot_sim tb3_simulation.launch.py`.
+
+- The simulated LiDAR matches the RPLiDAR S3 (3200 samples/rev at 10 Hz, 0.1125°, 0.05–40 m) and the wheel
+  odometry counts at the real encoder resolution (1372 counts/rev), so `slam_toolbox.yaml` and the EKF are shared.
+- Gazebo DiffDrive's TF is bridged to `/sim/tf`, not `/tf`; the sim IMU goes through the same covariance relay as
+  the BNO055 driver's values.
+- `robot_sim/config` only layers TurtleBot3 differences on the robot's `autonom_bringup/config`.
+
+## Nav2 modes
+
+`controller:=` and `planner:=` select the path follower and global planner, on the robot (`bringup.launch.py`) and
+in the simulation (`fibonacci_simulation.launch.py` / `start_sim.sh`). Simulation, TurtleBot3, laps in the 95 s
+after fast mode (details: [`docs/SESSION_2026-11-09.md`](docs/SESSION_2026-11-09.md)):
+
+| Mode | 0.6 m/s | 1.2 m/s | Notes |
+|---|---|---|---|
+| `controller:=mppi` (RPP maps, MPPI races) | **7 laps**, 12.5–13.8 s | **8 laps**, 11.0–13.0 s | keeps its speed in turns; MPPI CPU on the Pi untested |
+| `planner:=thetastar` (RPP) | 6 laps | 8 laps | gets "goal in lethal cost" refusals at times (open issue) |
+| default: RPP + NavFn | 5 laps, never < 0.17 m from a wall | 6 laps | most conservative |
+| `planner:=smac` (RPP) | 4 laps, 2 failed | 6 laps | many collision stalls |
+| `controller:=graceful` (sim only) | 2–3 laps | 2–4 laps | slow in every turn |
+
+The theoretical best lap (optimal racing line at the robot's limits) is ~5.3 s: [`docs/racing_line`](docs/racing_line).
+
+## Bring-up checklist (real robot)
+
+1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` (1372) in `autonom_hardware/config/hardware.yaml`.
 2. With wheels off the ground, check `/joint_states` velocities are positive when driving forward; fix with `*.inverted`.
-3. Tune `pid.kf` first (effort per rad/s), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
+3. Tune `pid.kf` first (effort per rad/s, ~1 / 45.03), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
 4. Check the LiDAR yaw (`laser_yaw` in the URDF) so the scan lines up with the robot's front in RViz.
+5. Check the BNO055 gyro before fusing it (`docs/07_imu_gyro.md`).
+
+## Docs
+
+| File | Content |
+|---|---|
+| `docs/01`–`05` | Hardware, software architecture, network, git workflow, simulation |
+| `docs/06_competition_rules.md` | Start delay, wall contact, lap scoring |
+| `docs/07_imu_gyro.md` | BNO055 gyro specs and checks |
+| `docs/HANDOFF.md` | Current state, decisions to keep, open issues |
+| `docs/REPORT.md` | Race results and to-do list |
+| `docs/SESSION_*.md` | Per-session measurements and changes |
+
+Branches: work goes to `not_tested` and `optimised` (CPU optimisations, C++ patrol); never commit to `main`.

@@ -59,12 +59,31 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
   // (localize_after_laps), or the first lap found when the map is never frozen. Laps before that run at the
   // exploration speed and acceleration.
   race_speed_delay_ = declare_parameter<double>("race_speed_delay", 0.0);
+  // Fast mode caps the cruise speed on straights shorter than short_straight_length (corner to corner: no room to
+  // reach race_speed and brake again) and on the last corner_approach_distance before each corner, so the robot
+  // brakes before the turn instead of overshooting it.
+  sections_.corner_angle = declare_parameter<double>("corner_angle", 0.35);
+  sections_.short_straight_length = declare_parameter<double>("short_straight_length", 0.0);
+  sections_.short_straight_speed = declare_parameter<double>("short_straight_speed", 0.0);
+  sections_.corner_approach_distance = declare_parameter<double>("corner_approach_distance", 0.0);
+  sections_.corner_approach_speed = declare_parameter<double>("corner_approach_speed", 0.0);
   for (const auto * accel : {&exploration_max_accel_, &race_max_accel_}) {
     if (!accel->empty() && accel->size() != 3) {
       throw std::invalid_argument("exploration_max_accel / race_max_accel must be empty or [x, y, theta]");
     }
   }
   const auto controller = declare_parameter<std::string>("controller_server", "controller_server");
+  // Cruise speed parameter of the path follower: RPP desired_linear_vel, MPPI vx_max.
+  speed_parameter_ = declare_parameter<std::string>("speed_parameter", "FollowPath.desired_linear_vel");
+  // Fast mode can switch Nav2 to another path follower (e.g. map with RPP, race with MPPI): race_controller is the
+  // controller_server plugin name sent to the BT's ControllerSelector, race_speed_parameter its cruise-speed
+  // parameter. Empty race_controller: keep one controller.
+  race_controller_ = declare_parameter<std::string>("race_controller", "");
+  race_speed_parameter_ = declare_parameter<std::string>("race_speed_parameter", "");
+  if (race_speed_parameter_.empty()) {
+    race_speed_parameter_ = speed_parameter_;
+  }
+  const auto selector_topic = declare_parameter<std::string>("controller_selector_topic", "/controller_selector");
   const auto smoother = declare_parameter<std::string>("velocity_smoother", "velocity_smoother");
   // Rear gate: keepout wall across the track behind the robot (global costmap KeepoutFilter), so Nav2 can never
   // plan a path that turns back (docs/06 section 4).
@@ -110,6 +129,7 @@ LoopPatrolNode::LoopPatrolNode(const rclcpp::NodeOptions & options)
       race_state_ = msg.data;
     });
   gate_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(gate_topic, latchedQos());
+  controller_selector_pub_ = create_publisher<std_msgs::msg::String>(selector_topic, latchedQos());
   loop_client_ = rclcpp_action::create_client<NavigateThroughPoses>(this, "navigate_through_poses");
   explore_client_ = rclcpp_action::create_client<NavigateToPose>(this, "navigate_to_pose");
   controller_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, controller);
@@ -150,6 +170,9 @@ void LoopPatrolNode::onTick()
   }
   if (fast_at_ && !fast_ && kind_ == Kind::kLoop) {
     updateDrivingProfile();
+  }
+  if (fast_ && kind_ == Kind::kLoop) {
+    updateSectionSpeed();
   }
   if (phase_ == Phase::kActive) {
     watchActive();
@@ -254,6 +277,8 @@ void LoopPatrolNode::planAndSend()
     start_monitor_.emplace(*start_line_, start_line_half_width_);
     gate_anchor_ = robot;
     gate_direction_ = pose->yaw;
+    // Seed the trail with a point behind the start so the first gate also lies on the (straight) start path.
+    gate_trail_ = {Point{robot.x - std::cos(pose->yaw), robot.y - std::sin(pose->yaw)}, robot};
     publishRearGate();
     RCLCPP_INFO(get_logger(), "Start line at (%.2f, %.2f), race heading %.2f rad", pose->x, pose->y, pose->yaw);
   }
@@ -474,9 +499,37 @@ void LoopPatrolNode::cancelGoal()
   ++goal_seq_;  // ignore results of the cancelled goal
 }
 
-void LoopPatrolNode::setSpeed(double speed)
+void LoopPatrolNode::updateSectionSpeed()
 {
-  // Path follower cruise speed (RPP FollowPath.desired_linear_vel), set only when it changes.
+  if (last_loop_.empty() || race_speed_ <= 0.0) {
+    return;
+  }
+  if (section_loop_.size() != last_loop_.size() ||
+    !std::equal(section_loop_.begin(), section_loop_.end(), last_loop_.begin(),
+      [](const Waypoint & a, const Waypoint & b) { return a.x == b.x && a.y == b.y; }))
+  {
+    section_loop_ = last_loop_;
+    sections_.race_speed = race_speed_;
+    section_speed_ = sectionSpeeds(section_loop_, sections_);
+    const auto capped = std::count_if(section_speed_.begin(), section_speed_.end(),
+      [this](double v) { return v < race_speed_; });
+    RCLCPP_INFO(get_logger(),
+      "Lap sections: %ld of %zu segments capped (short straights < %.2f m: %.2f m/s, %.2f m before corners: %.2f m/s)",
+      static_cast<long>(capped), section_speed_.size(), sections_.short_straight_length, sections_.short_straight_speed,
+      sections_.corner_approach_distance, sections_.corner_approach_speed);
+  }
+  const auto pose = robotPose();
+  if (!pose) {
+    return;
+  }
+  const auto segment = nearestSegment(section_loop_, {pose->x, pose->y});
+  // setSpeed returns at once when the speed is already set, and retries after a failed parameter call.
+  setSpeed(segment ? section_speed_[*segment] : race_speed_, false);
+}
+
+void LoopPatrolNode::setSpeed(double speed, bool log)
+{
+  // Path follower cruise speed (speed_parameter), set only when it changes.
   if (speed <= 0.0 || (speed_ && *speed_ == speed)) {
     return;
   }
@@ -485,12 +538,17 @@ void LoopPatrolNode::setSpeed(double speed)
     return;
   }
   speed_ = speed;
+  const auto & parameter = fast_ && !race_controller_.empty() ? race_speed_parameter_ : speed_parameter_;
   controller_params_->set_parameters(
-    {rclcpp::Parameter("FollowPath.desired_linear_vel", speed)},
-    [this, speed](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
+    {rclcpp::Parameter(parameter, speed)},
+    [this, speed, log](std::shared_future<std::vector<rcl_interfaces::msg::SetParametersResult>> future) {
       const auto results = future.get();
       if (std::all_of(results.begin(), results.end(), [](const auto & r) { return r.successful; })) {
-        RCLCPP_INFO(get_logger(), "Cruise speed %.2f m/s", speed);
+        if (log) {
+          RCLCPP_INFO(get_logger(), "Cruise speed %.2f m/s", speed);
+        } else {
+          RCLCPP_DEBUG(get_logger(), "Cruise speed %.2f m/s", speed);
+        }
       } else {
         speed_.reset();
         RCLCPP_WARN(get_logger(), "Could not set cruise speed %.2f m/s", speed);
@@ -513,6 +571,13 @@ void LoopPatrolNode::updateDrivingProfile()
     if (!fast_) {
       fast_ = true;
       RCLCPP_INFO(get_logger(), "Fast mode");
+      if (!race_controller_.empty()) {
+        std_msgs::msg::String msg;
+        msg.data = race_controller_;
+        controller_selector_pub_->publish(msg);
+        speed_.reset();  // the race speed goes to race_speed_parameter now
+        RCLCPP_INFO(get_logger(), "Race controller: %s", race_controller_.c_str());
+      }
     }
     setSpeed(race_speed_);
     setAcceleration(race_max_accel_);
@@ -616,6 +681,11 @@ void LoopPatrolNode::updateRearGate(const Waypoint & pose)
   }
   gate_anchor_ = Point{pose.x, pose.y};
   gate_direction_ = direction;
+  gate_trail_.push_back(*gate_anchor_);
+  constexpr std::size_t kTrailPoints = 32;  // far more than the gate offset needs
+  if (gate_trail_.size() > kTrailPoints) {
+    gate_trail_.erase(gate_trail_.begin());
+  }
   publishRearGate();
 }
 
@@ -633,8 +703,15 @@ void LoopPatrolNode::publishRearGate()
   mask.header.stamp = get_clock()->now();
   mask.info = map_->info;
   mask.data.assign(grid->data.size(), 0);
-  for (const auto & cell : rearGate(*grid, *gate_anchor_, *gate_direction_, settings_.cut_offset,
-      settings_.cut_half_width).cells)
+  // On the travelled path cut_offset behind the robot, across the direction of travel there (see trailPointBehind).
+  Point centre{gate_anchor_->x - settings_.cut_offset * std::cos(*gate_direction_),
+    gate_anchor_->y - settings_.cut_offset * std::sin(*gate_direction_)};
+  double across = *gate_direction_;
+  if (const auto behind = trailPointBehind(gate_trail_, settings_.cut_offset)) {
+    centre = behind->first;
+    across = behind->second;
+  }
+  for (const auto & cell : rearGate(*grid, centre, across, 0.0, settings_.cut_half_width).cells)
   {
     mask.data[grid->index(cell.row, cell.col)] = 100;
   }

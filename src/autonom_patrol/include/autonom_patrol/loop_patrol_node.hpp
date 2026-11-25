@@ -51,10 +51,11 @@ private:
   void sendLoop(const std::vector<Waypoint> & waypoints);
   void sendExploration(const Waypoint & goal);
   void cancelGoal();
-  void setSpeed(double speed);
+  void setSpeed(double speed, bool log = true);
   void setAcceleration(const std::vector<double> & max_accel);
   void startFastModeTimer();
   void updateDrivingProfile();
+  void updateSectionSpeed();
   void watchStartLine(const Waypoint & pose);
   void updateRearGate(const Waypoint & pose);
   void publishRearGate();
@@ -64,6 +65,10 @@ private:
   // Parameters
   std::string global_frame_;
   std::string robot_frame_;
+  std::string speed_parameter_;  // controller parameter that holds the cruise speed
+  // Optional second path follower for fast mode (Nav2 ControllerSelector), and its cruise-speed parameter.
+  std::string race_controller_;
+  std::string race_speed_parameter_;
   double min_known_area_{4.0};
   double lap_pause_{0.0};
   double retry_period_{3.0};
@@ -73,6 +78,7 @@ private:
   std::vector<double> exploration_max_accel_;  // velocity_smoother max_accel [x, y, theta]; empty = untouched
   std::vector<double> race_max_accel_;
   double race_speed_delay_{0.0};
+  SectionSpeedSettings sections_;  // race_speed filled in at use
   bool rear_gate_enabled_{true};
   double rear_gate_step_{0.3};
   double behind_drop_radius_{2.0};
@@ -104,9 +110,12 @@ private:
   int reverse_crossings_{0};
   std::optional<rclcpp::Time> last_crossing_;
   std::vector<Waypoint> last_loop_;
+  std::vector<Waypoint> section_loop_;  // lap the section flags were computed for
+  std::vector<double> section_speed_;
   int lap_{0};
   std::optional<Point> gate_anchor_;
   std::optional<double> gate_direction_;
+  std::vector<Point> gate_trail_;  // forward positions, oldest first; the rear gate sits on this path
   std::optional<double> speed_;
   std::vector<double> accel_;  // last max_accel the smoother accepted
   std::optional<rclcpp::Time> fast_at_;  // node clock (sim time in Gazebo): race speed from here on
@@ -129,6 +138,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr race_state_sub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr gate_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr controller_selector_pub_;
   rclcpp_action::Client<NavigateThroughPoses>::SharedPtr loop_client_;
   rclcpp_action::Client<NavigateToPose>::SharedPtr explore_client_;
   std::shared_ptr<rclcpp::AsyncParametersClient> controller_params_;

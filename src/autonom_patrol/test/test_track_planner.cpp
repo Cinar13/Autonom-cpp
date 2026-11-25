@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <vector>
@@ -405,4 +406,156 @@ TEST(TrackPlanner, RearGateForcesTheLongWayRound)
   EXPECT_GE(open_track, 0);
   EXPECT_LE(open_track, 20);
   EXPECT_GT(gated_track, 400);
+}
+
+namespace
+{
+
+/// Closed rectangle lap (counterclockwise) with a waypoint every `step` metres, starting at (0, 0).
+std::vector<autonom_patrol::Waypoint> rectangleLap(double length, double width, double step)
+{
+  std::vector<autonom_patrol::Waypoint> lap;
+  const auto side = [&lap, step](double x0, double y0, double dx, double dy, double size) {
+    const int n = static_cast<int>(std::lround(size / step));
+    for (int i = 0; i < n; ++i) {
+      lap.push_back({x0 + dx * step * i, y0 + dy * step * i, 0.0});
+    }
+  };
+  side(0.0, 0.0, 1.0, 0.0, length);
+  side(length, 0.0, 0.0, 1.0, width);
+  side(length, width, -1.0, 0.0, length);
+  side(0.0, width, 0.0, -1.0, width);
+  return lap;
+}
+
+}  // namespace
+
+TEST(TrackPlanner, ShortStraightsAreTheSidesShorterThanTheLimit)
+{
+  // 2.0 m straights joined by 0.6 m ones, waypoints every 0.2 m: segments 0-9 long side, 10-12 short side, ...
+  const auto lap = rectangleLap(2.0, 0.6, 0.2);
+  ASSERT_EQ(lap.size(), 26U);
+  const auto short_segment = autonom_patrol::shortStraightSegments(lap, 0.35, 0.8);
+  for (std::size_t i = 0; i < lap.size(); ++i) {
+    const bool on_short_side = (i >= 10 && i < 13) || i >= 23;
+    EXPECT_EQ(short_segment[i], on_short_side) << "segment " << i;
+  }
+}
+
+TEST(TrackPlanner, NoShortStraightsWhenEverySideIsLongEnough)
+{
+  const auto short_segment = autonom_patrol::shortStraightSegments(rectangleLap(2.0, 1.0, 0.2), 0.35, 0.8);
+  EXPECT_TRUE(std::none_of(short_segment.begin(), short_segment.end(), [](bool s) { return s; }));
+}
+
+TEST(TrackPlanner, EveryCornerSegmentIsItsOwnShortStraight)
+{
+  // A ring of 12 waypoints (30 deg turns, radius 0.5 m): each segment is a corner, 0.26 m long.
+  std::vector<autonom_patrol::Waypoint> ring_lap;
+  for (int i = 0; i < 12; ++i) {
+    ring_lap.push_back({0.5 * std::cos(i * M_PI / 6.0), 0.5 * std::sin(i * M_PI / 6.0), 0.0});
+  }
+  const auto tight = autonom_patrol::shortStraightSegments(ring_lap, 0.35, 0.8);
+  EXPECT_TRUE(std::all_of(tight.begin(), tight.end(), [](bool s) { return s; }));
+  // Above the corner angle the ring is one 3.1 m straight: not short.
+  const auto gentle = autonom_patrol::shortStraightSegments(ring_lap, 0.6, 0.8);
+  EXPECT_TRUE(std::none_of(gentle.begin(), gentle.end(), [](bool s) { return s; }));
+}
+
+TEST(TrackPlanner, ShortStraightsNeedALap)
+{
+  EXPECT_EQ(autonom_patrol::shortStraightSegments({{0.0, 0.0, 0.0}, {0.3, 0.0, 0.0}}, 0.35, 0.8),
+    std::vector<bool>(2, false));
+  EXPECT_FALSE(autonom_patrol::nearestSegment({{0.0, 0.0, 0.0}}, {0.0, 0.0}).has_value());
+}
+
+TEST(TrackPlanner, NearestSegmentIncludesTheClosingSegment)
+{
+  const auto lap = rectangleLap(2.0, 0.6, 0.2);
+  EXPECT_EQ(autonom_patrol::nearestSegment(lap, {0.51, -0.05}), 2U);
+  EXPECT_EQ(autonom_patrol::nearestSegment(lap, {2.05, 0.3}), 11U);
+  EXPECT_EQ(autonom_patrol::nearestSegment(lap, {-0.05, 0.1}), 25U);  // last waypoint back to the first
+}
+
+TEST(TrackPlanner, DistanceToNextCornerCountsDownAlongEachStraight)
+{
+  const auto lap = rectangleLap(2.0, 0.6, 0.2);  // corners at waypoints 0, 10, 13, 23
+  const auto d = autonom_patrol::distanceToNextCorner(lap, 0.35);
+  EXPECT_NEAR(d[0], 1.8, 1e-9);   // segment 0 ends at waypoint 1: 9 segments to waypoint 10
+  EXPECT_NEAR(d[9], 0.0, 1e-9);   // ends at the corner
+  EXPECT_NEAR(d[10], 0.4, 1e-9);
+  EXPECT_NEAR(d[25], 0.0, 1e-9);  // closing segment ends at waypoint 0, a corner
+  EXPECT_NEAR(d[23], 0.4, 1e-9);
+}
+
+TEST(TrackPlanner, SectionSpeedsBrakeBeforeCornersAndOnShortStraights)
+{
+  autonom_patrol::SectionSpeedSettings s;
+  s.race_speed = 1.4;
+  s.short_straight_length = 0.8;
+  s.short_straight_speed = 1.0;
+  s.corner_approach_distance = 0.5;
+  s.corner_approach_speed = 0.8;
+  const auto v = autonom_patrol::sectionSpeeds(rectangleLap(2.0, 0.6, 0.2), s);
+  EXPECT_DOUBLE_EQ(v[0], 1.4);  // long straight, far from the corner
+  EXPECT_DOUBLE_EQ(v[6], 1.4);  // ends 0.6 m before the corner
+  EXPECT_DOUBLE_EQ(v[7], 0.8);  // ends 0.4 m before it: braking
+  EXPECT_DOUBLE_EQ(v[9], 0.8);
+  EXPECT_DOUBLE_EQ(v[11], 0.8);  // short straight that is also a corner approach: the lower cap
+  s.corner_approach_speed = 0.0;
+  const auto no_approach = autonom_patrol::sectionSpeeds(rectangleLap(2.0, 0.6, 0.2), s);
+  EXPECT_DOUBLE_EQ(no_approach[7], 1.4);
+  EXPECT_DOUBLE_EQ(no_approach[11], 1.0);
+}
+
+TEST(TrackPlanner, NoCornerMeansNoApproachCap)
+{
+  const std::vector<autonom_patrol::Waypoint> line{{0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {2.0, 0.0, 0.0}};
+  // Degenerate "lap" that doubles back: the closing segment turns 180 deg, so there is a corner; a lap without any
+  // corner needs a gentle ring.
+  std::vector<autonom_patrol::Waypoint> ring_lap;
+  for (int i = 0; i < 12; ++i) {
+    ring_lap.push_back({0.5 * std::cos(i * M_PI / 6.0), 0.5 * std::sin(i * M_PI / 6.0), 0.0});
+  }
+  const auto d = autonom_patrol::distanceToNextCorner(ring_lap, 0.6);
+  EXPECT_TRUE(std::all_of(d.begin(), d.end(), [](double x) { return std::isinf(x); }));
+  EXPECT_FALSE(std::isinf(autonom_patrol::distanceToNextCorner(line, 0.35)[0]));
+}
+
+TEST(TrackPlanner, TrailPointBehindFollowsTheCornerBack)
+{
+  // Drove +x along the bottom straight, then turned up (+y): 0.25 m back along the path is still on the straight.
+  const std::vector<autonom_patrol::Point> trail{{0.0, 0.0}, {0.2, 0.0}, {0.4, 0.0}, {0.6, 0.0}, {0.6, 0.2}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 0.25);
+  ASSERT_TRUE(behind.has_value());
+  EXPECT_NEAR(behind->first.x, 0.55, 1e-9);
+  EXPECT_NEAR(behind->first.y, 0.0, 1e-9);
+  EXPECT_NEAR(behind->second, 0.0, 1e-9);  // across the straight's direction, so the gate cuts that corridor
+  // Within the newest segment: the exit direction.
+  const auto near = autonom_patrol::trailPointBehind(trail, 0.1);
+  ASSERT_TRUE(near.has_value());
+  EXPECT_NEAR(near->first.y, 0.1, 1e-9);
+  EXPECT_NEAR(near->second, M_PI / 2.0, 1e-9);
+}
+
+TEST(TrackPlanner, TrailPointBehindStopsAtTheOldestPoint)
+{
+  const std::vector<autonom_patrol::Point> trail{{0.0, 0.0}, {0.2, 0.0}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 1.0);
+  ASSERT_TRUE(behind.has_value());
+  EXPECT_NEAR(behind->first.x, 0.0, 1e-9);
+  EXPECT_FALSE(autonom_patrol::trailPointBehind({{0.0, 0.0}}, 0.25).has_value());
+  EXPECT_FALSE(autonom_patrol::trailPointBehind({{0.0, 0.0}, {0.0, 0.0}}, 0.25).has_value());
+}
+
+TEST(TrackPlanner, GateOnTheTrailSealsTheCorridorTheRobotCameFrom)
+{
+  // The ring track's bottom straight: the gate placed from the trail point behind the robot, across the travel
+  // direction there, reaches both walls.
+  const autonom_patrol::Grid g = ring();
+  const std::vector<autonom_patrol::Point> trail{{0.0, -4.0}, {0.5, -4.0}, {1.0, -4.0}, {1.2, -4.0}};
+  const auto behind = autonom_patrol::trailPointBehind(trail, 0.4);
+  ASSERT_TRUE(behind.has_value());
+  const auto gate = autonom_patrol::rearGate(g, behind->first, behind->second, 0.0, 1.5);
+  EXPECT_TRUE(gate.sealed);
 }

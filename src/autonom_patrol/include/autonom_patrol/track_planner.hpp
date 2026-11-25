@@ -100,6 +100,13 @@ struct Gate
 Gate rearGate(
   const Grid & grid, Point xy, double direction, double offset, double max_half_width, int occupied_threshold = 50);
 
+/// Point `distance` metres back along the robot's travelled path (`trail`, oldest first, newest = the robot) and
+/// the direction of travel there. Following the path, not the current heading, keeps a gate behind the robot across
+/// the corridor it came from even in a corner: a line perpendicular to the exit direction would run along the
+/// entry corridor and leave the way back open. nullopt with fewer than 2 points; the oldest point (and its
+/// segment's direction) when the trail is shorter than `distance`.
+std::optional<std::pair<Point, double>> trailPointBehind(const std::vector<Point> & trail, double distance);
+
 /// Lap waypoints along the closed track ahead of the robot (driving-distance ordering, centre line); empty until
 /// the ring is closed, i.e. the far side of a sealed cut behind the robot is reached the long way round.
 std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, const LoopSettings & settings);
@@ -117,6 +124,32 @@ std::vector<Waypoint> startAhead(std::vector<Waypoint> waypoints, Point xy, doub
 
 /// Remove waypoints within `radius` behind the robot (between it and the rear gate).
 std::vector<Waypoint> dropBehind(const std::vector<Waypoint> & waypoints, Point xy, double heading, double radius);
+
+/// For the closed lap (segment i = waypoint i -> i + 1, the last one back to waypoint 0): true for segments of a
+/// straight shorter than `max_length` [m]. The lap is split into straights at waypoints where it turns by more
+/// than `corner_angle` [rad]; inside a corner every segment counts as its own (short) straight. A lap with no
+/// corner is one straight. Fewer than 3 waypoints: all false.
+std::vector<bool> shortStraightSegments(const std::vector<Waypoint> & lap, double corner_angle, double max_length);
+
+/// For the closed lap: distance along the track from the end of segment i to the next waypoint where the lap turns
+/// by more than `corner_angle` (0 when segment i ends at one). Infinite for a lap without corners.
+std::vector<double> distanceToNextCorner(const std::vector<Waypoint> & lap, double corner_angle);
+
+struct SectionSpeedSettings
+{
+  double race_speed{0.0};
+  double corner_angle{0.35};          // [rad] turn at a waypoint that makes it a corner
+  double short_straight_length{0.0};  // [m] straights shorter than this ...
+  double short_straight_speed{0.0};   // ... are capped at this [m/s] (0: off)
+  double corner_approach_distance{0.0};  // [m] segments ending this close before a corner ...
+  double corner_approach_speed{0.0};     // ... are capped at this [m/s] (0: off)
+};
+
+/// Cruise speed per lap segment: race_speed, capped on short straights and before corners.
+std::vector<double> sectionSpeeds(const std::vector<Waypoint> & lap, const SectionSpeedSettings & settings);
+
+/// Segment of the closed lap nearest to `p` (index of its first waypoint); nullopt for fewer than 2 waypoints.
+std::optional<std::size_t> nearestSegment(const std::vector<Waypoint> & lap, Point p);
 
 /// Line through the start position, perpendicular to the start heading (the race direction).
 struct StartLine

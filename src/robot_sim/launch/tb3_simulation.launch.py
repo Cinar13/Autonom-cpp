@@ -1,5 +1,10 @@
 """Gazebo Harmonic simulation of the full autonomy stack (use_sim_time:=true everywhere).
 
+The two halves can run as separate launches (scripts/start_sim.sh, then scripts/start_robot.sh --sim):
+  use_autonomy:=false   the simulated world only: Gazebo, robot spawn, robot_state_publisher, the ros_gz bridge, the
+                        sim stand-ins for the hardware drivers (wheel odometry, IMU relay) and RViz
+  use_world:=false      the robot code only: autonomy.launch.py (EKF, slam_toolbox, Nav2, loop patrol, start gate)
+
 Swap the placeholder TurtleBot3 Burger for the custom robot with a single argument, e.g.
   robot_urdf:=$(ros2 pkg prefix autonom_description)/share/autonom_description/urdf/autonom.urdf.xacro
 The description is expanded with `sim:=true`, so it must include autonom_description/urdf/gz_plugins.xacro.
@@ -34,6 +39,8 @@ def _gz_sim(gz_args, on_exit_shutdown):
 
 
 def _gazebo(context):
+    if not is_true(context, 'use_world'):
+        return []
     world = LaunchConfiguration('world').perform(context)
     if not is_true(context, 'gui'):
         return [_gz_sim(['-s', '--headless-rendering', '-r', '-v', '2', world], 'true')]
@@ -66,6 +73,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world', default_value=os.path.join(sim_share, 'worlds', 'circuit2_harmonic.sdf'),
             description='Gazebo world SDF'),
+        DeclareLaunchArgument('use_world', default_value='true', description='Start the simulated world and RViz'),
+        DeclareLaunchArgument(
+            'use_autonomy', default_value='true', description='Start the robot code (autonomy.launch.py)'),
         DeclareLaunchArgument('gui', default_value='true', description='Show the Gazebo GUI (false: headless server)'),
         DeclareLaunchArgument('use_rviz', default_value='true', description='Start RViz2'),
         DeclareLaunchArgument('use_imu', default_value='false', description='Fuse the simulated IMU in the EKF'),
@@ -77,6 +87,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'auto_start', default_value='true',
             description='Send the race start signal on launch (false: call /race/start yourself)'),
+        DeclareLaunchArgument('wheel_radius', default_value='0.033', description='Sim robot wheel radius [m]'),
+        DeclareLaunchArgument('wheel_separation', default_value='0.160', description='Sim robot wheel separation [m]'),
+        DeclareLaunchArgument('left_wheel_joint', default_value='wheel_left_joint', description='Left wheel joint'),
+        DeclareLaunchArgument('right_wheel_joint', default_value='wheel_right_joint', description='Right wheel joint'),
         DeclareLaunchArgument('x', default_value='0.0', description='Spawn x [m]'),
         DeclareLaunchArgument('y', default_value='-4.7', description='Spawn y [m] (on the circuit2 track)'),
         DeclareLaunchArgument('yaw', default_value='-1.5708', description='Spawn yaw [rad]'),
@@ -119,13 +133,35 @@ def generate_launch_description():
         output='screen',
     )
 
-    # Same EKF input contract as the real robot: wheel odometry with covariance on /wheel/odom.
-    wheel_odom_relay = Node(
+    # Same EKF input contract as the real robot: /wheel/odom from encoder counts. The simulated wheel joint angles
+    # are counted with the real encoders' resolution (autonom_hardware hardware.yaml ticks_per_revolution: 98 CPR x
+    # 14:1 = 1372) and integrated exactly like the robot's wheel_odometry node, with its covariances.
+    wheel_odometry = Node(
+        package='autonom_hardware',
+        executable='sim_wheel_odometry_node',
+        name='wheel_odometry',
+        parameters=[
+            os.path.join(get_package_share_directory('autonom_hardware'), 'config', 'hardware.yaml'),
+            {
+                'wheel_radius': ParameterValue(LaunchConfiguration('wheel_radius'), value_type=float),
+                'wheel_separation': ParameterValue(LaunchConfiguration('wheel_separation'), value_type=float),
+                'left_joint_name': LaunchConfiguration('left_wheel_joint'),
+                'right_joint_name': LaunchConfiguration('right_wheel_joint'),
+            },
+            SIM_TIME,
+        ],
+        remappings=[('joint_states', '/joint_states'), ('wheel/odom', '/wheel/odom')],
+        output='screen',
+    )
+
+    # Same IMU contract as the real robot: /imu/data with the bno055 driver's covariances (imu.yaml), not Gazebo's
+    # noise stddev squared, which made the EKF trust acceleration spikes ~60x too much.
+    imu_relay = Node(
         package='autonom_localization',
-        executable='odometry_covariance_relay',
-        name='wheel_odom_covariance_relay',
-        parameters=[os.path.join(bringup_share, 'config', 'odometry_relays.yaml'), SIM_TIME],
-        remappings=[('odom_in', '/odom'), ('odom_out', '/wheel/odom')],
+        executable='imu_covariance_relay',
+        name='imu_covariance_relay',
+        parameters=[os.path.join(bringup_share, 'config', 'imu.yaml'), SIM_TIME],
+        remappings=[('imu_in', '/imu/raw'), ('imu_out', '/imu/data')],
         output='screen',
     )
 
@@ -141,6 +177,7 @@ def generate_launch_description():
             'nav2_params_overlay': LaunchConfiguration('nav2_params_overlay'),
             'nav2_startup_delay': '10.0',
         }.items(),
+        condition=IfCondition(LaunchConfiguration('use_autonomy')),
     )
 
     rviz = Node(
@@ -152,12 +189,17 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription(arguments + environment + [
-        OpaqueFunction(function=_gazebo),
+    world = GroupAction(scoped=False, condition=IfCondition(LaunchConfiguration('use_world')), actions=[
         robot_state_publisher,
         spawn_robot,
         bridge,
-        wheel_odom_relay,
-        autonomy,
+        wheel_odometry,
+        imu_relay,
         rviz,
+    ])
+
+    return LaunchDescription(arguments + environment + [
+        OpaqueFunction(function=_gazebo),
+        world,
+        autonomy,
     ])

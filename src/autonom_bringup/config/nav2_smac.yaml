@@ -1,0 +1,26 @@
+# Nav2 overlay for planner:=smac (bringup.launch.py on the robot, fibonacci_simulation.launch.py in the sim):
+# Smac 2D instead of NavFn for the global path.
+# Both search the grid, but Smac 2D weighs cost along the path (cost_travel_multiplier: keeps it nearer the corridor
+# centre) and smooths the result, so the controller gets rounder corners than NavFn's grid path.
+# Smac Hybrid-A* (DUBIN) was tried first: every lap waypoint has a heading, so with a minimum turning radius it
+# planned full loops to reach them, and it refused to plan whenever the robot stood in the inflated zone near a wall
+# ("Start occupied" 569 times; the robot stopped in the right arm).
+planner_server:
+  ros__parameters:
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlanner2D"
+      tolerance: 0.3
+      downsample_costmap: false
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 0.5
+      # Strong pull towards the corridor centre: at 2.0 plans came within 0.075 m of a wall (robot r = 0.11 m).
+      cost_travel_multiplier: 5.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        # Stay near the centred grid path: stronger smoothing (0.3 / 0.2) pulled corners onto the inside walls.
+        w_smooth: 0.1
+        w_data: 0.5
+        tolerance: 1.0e-10

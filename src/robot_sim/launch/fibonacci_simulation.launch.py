@@ -6,11 +6,22 @@ robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot
                  config/nav2_fibonacci_fast.yaml)
 
 Driving overrides (empty keeps the configured values):
-  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.0 m/s (autonom: up to 0.65, its
+  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 1.46, its
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
+  controller:=mppi               RPP maps, MPPI races (autonom_bringup/config/nav2_mppi.yaml + config/nav2_mppi.yaml)
+  controller:=graceful           Nav2's Graceful controller (config/nav2_graceful.yaml)
+  planner:=smac                  Smac 2D global planner instead of NavFn (autonom_bringup/config/nav2_smac.yaml)
+  planner:=thetastar             Theta* any-angle global planner (autonom_bringup/config/nav2_thetastar.yaml)
 The Nav2 velocity smoother and the Gazebo DiffDrive limits are raised to match.
+
+stack:=all     world and robot code in one launch (default)
+stack:=world   the simulated world and RViz only (scripts/start_sim.sh); the Gazebo DiffDrive limits are opened to the
+               ranges above (speed up to the robot's maximum, 5.0 rad/s, 3.0 m/s^2) so that whatever the robot code
+               chooses later is limited by its own Nav2 / patrol settings, not by Gazebo
+stack:=robot   the robot code only (scripts/start_robot.sh --sim), against a running stack:=world of the same robot:=;
+               the driving overrides, controller:= and planner:= apply here
 
 The EKF fuses the IMU (gyro + accelerometer) and rf2o's forward speed by default (use_imu, use_rf2o): at
 0.6 m/s the TurtleBot3's wheels slip and wheel-only odometry drifted up to 0.35 m / 1 rad; fused it stayed within 0.17 m over 3 minutes.
@@ -32,11 +43,11 @@ from launch.substitutions import LaunchConfiguration
 
 ROBOTS = ('tb3', 'tb3_fast', 'autonom')
 # Per robot: the configured Nav2 velocity_smoother limits, the Gazebo DiffDrive limits of its model, and the highest
-# cruise speed a user may ask for (the real robot's motors stop at 0.65 m/s).
+# cruise speed a user may ask for (the real robot's motors stop at 430 rpm = 1.46 m/s).
 LIMITS = {
-    'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.0},
-    'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.0},
-    'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 3.0, 'max_speed': 0.65},
+    'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.5},
+    'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.5},
+    'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 1.46, 'gz_turn': 3.0, 'max_speed': 1.46},
 }
 MIN_SPEED = 0.1
 ACCEL_RANGE = (0.1, 3.0)  # m/s^2
@@ -105,21 +116,58 @@ def _driving_overrides(context, robot):
     return f.name, ' '.join(f'{k}:={v}' for k, v in xacro.items())
 
 
+STACKS = ('all', 'world', 'robot')
+
+
+def _open_gz_limits(robot):
+    """xacro arguments that keep Gazebo's DiffDrive from capping any speed / turn / acceleration a user may choose."""
+    limits = LIMITS[robot]
+    xacro = {'gz_max_angular_velocity': max(limits['gz_turn'], TURN_RANGE[1]),
+             'gz_max_acceleration': ACCEL_RANGE[1]}
+    if robot != 'autonom':  # the real robot's model already stops at its motors' 1.46 m/s
+        xacro['gz_max_velocity'] = round(limits['max_speed'] + 0.05, 3)
+    return ' '.join(f'{k}:={v}' for k, v in xacro.items())
+
+
 def _simulation(context):
     sim_share = get_package_share_directory('robot_sim')
     robot = LaunchConfiguration('robot').perform(context)
     if robot not in ROBOTS:
         raise ValueError(f"robot must be one of {ROBOTS}, got '{robot}'")
+    wheels = {}  # tb3_simulation defaults: the TurtleBot3's wheels
     if robot == 'autonom':
         urdf = os.path.join(get_package_share_directory('autonom_description'), 'urdf', 'autonom.urdf.xacro')
         overlay = ''  # the base configuration is tuned for this robot
+        # Keep in sync with autonom.urdf.xacro and autonom_hardware hardware.yaml.
+        wheels = {'wheel_radius': '0.0325', 'wheel_separation': '0.17',
+                  'left_wheel_joint': 'left_wheel_joint', 'right_wheel_joint': 'right_wheel_joint'}
     elif robot == 'tb3_fast':
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_fast.urdf.xacro')
         overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci_fast.yaml')
     else:
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_sim.urdf.xacro')
         overlay = os.path.join(sim_share, 'config', 'nav2_fibonacci.yaml')
-    driving_overlay, xacro_args = _driving_overrides(context, robot)
+    controller = LaunchConfiguration('controller').perform(context)
+    if controller not in ('rpp', 'mppi', 'graceful'):
+        raise ValueError(f"controller must be rpp, mppi or graceful, got '{controller}'")
+    bringup_config = os.path.join(get_package_share_directory('autonom_bringup'), 'config')
+    if controller == 'mppi':  # the robot's MPPI overlay, then the TurtleBot3 delta
+        overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, 'nav2_mppi.yaml'),
+                                       os.path.join(sim_share, 'config', 'nav2_mppi.yaml')) if p)
+    elif controller == 'graceful':  # sim only: much slower than RPP and MPPI (docs/SESSION_2026-11-09.md)
+        overlay = ','.join(p for p in (overlay, os.path.join(sim_share, 'config', 'nav2_graceful.yaml')) if p)
+    planner = LaunchConfiguration('planner').perform(context)
+    if planner not in ('navfn', 'smac', 'thetastar'):
+        raise ValueError(f"planner must be navfn, smac or thetastar, got '{planner}'")
+    if planner != 'navfn':  # shared with the robot (bringup.launch.py planner:=)
+        overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, f'nav2_{planner}.yaml')) if p)
+    stack = LaunchConfiguration('stack').perform(context)
+    if stack not in STACKS:
+        raise ValueError(f"stack must be one of {STACKS}, got '{stack}'")
+    if stack == 'world':
+        driving_overlay, xacro_args = '', _open_gz_limits(robot)
+    else:
+        driving_overlay, xacro_args = _driving_overrides(context, robot)
     if driving_overlay:
         overlay = ','.join(path for path in (overlay, driving_overlay) if path)
     arguments = {
@@ -132,6 +180,9 @@ def _simulation(context):
         'yaw': LaunchConfiguration('yaw'),
         'use_imu': LaunchConfiguration('use_imu'),
         'use_rf2o': LaunchConfiguration('use_rf2o'),
+        'use_world': str(stack != 'robot').lower(),
+        'use_autonomy': str(stack != 'world').lower(),
+        **wheels,
     }
     return [IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(sim_share, 'launch', 'tb3_simulation.launch.py')),
@@ -141,7 +192,16 @@ def _simulation(context):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'stack', default_value='all',
+            description='all | world (simulated world + RViz) | robot (robot code against a running world)'),
         DeclareLaunchArgument('robot', default_value='tb3', description=f'Robot model: {" | ".join(ROBOTS)}'),
+        DeclareLaunchArgument(
+            'controller', default_value='rpp',
+            description='Path follower: rpp (Regulated Pure Pursuit) | mppi (Model Predictive Path Integral) | graceful'),
+        DeclareLaunchArgument(
+            'planner', default_value='navfn',
+            description='Global planner: navfn (shortest grid path) | smac (Smac 2D, smoothed grid path) | thetastar (any-angle)'),
         DeclareLaunchArgument('x', default_value='0.0'),
         DeclareLaunchArgument('y', default_value='-0.735'),
         DeclareLaunchArgument('yaw', default_value='0.0'),

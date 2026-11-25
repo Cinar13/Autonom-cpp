@@ -33,7 +33,8 @@
   gz_type_name: "gz.msgs.Model"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/imu/data"
+# Raw sim IMU; imu_covariance_relay republishes it on /imu/data with the BNO055 driver's covariances.
+- ros_topic_name: "/imu/raw"
   gz_topic_name: "/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
