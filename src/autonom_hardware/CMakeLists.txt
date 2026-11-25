@@ -64,6 +64,8 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::SimWheelOdometryNode"
   EXECUTABLE sim_wheel_odometry_node
+)
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::StartButtonNode"
   EXECUTABLE start_button_node
 )
