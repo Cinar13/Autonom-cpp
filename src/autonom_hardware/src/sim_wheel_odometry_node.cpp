@@ -18,7 +18,7 @@ SimWheelOdometryNode::SimWheelOdometryNode(const rclcpp::NodeOptions & options)
   const auto wheel_separation =
     declareParameter<double>(*this, "wheel_separation", 0.17, "Distance between wheel contact points [m]");
   ticks_per_revolution_ = declareParameter<std::int64_t>(
-    *this, "ticks_per_revolution", 1372, "Encoder counts per wheel revolution after x4 decoding (incl. gearbox)");
+    *this, "ticks_per_revolution", 1400, "Encoder counts per wheel revolution after x4 decoding (incl. gearbox)");
   odom_frame_id_ = declareParameter<std::string>(*this, "odom_frame_id", "odom", "Odometry frame");
   base_frame_id_ = declareParameter<std::string>(*this, "base_frame_id", "base_footprint", "Robot base frame");
   left_joint_name_ =

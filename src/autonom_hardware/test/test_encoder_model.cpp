@@ -8,10 +8,10 @@
 using autonom_hardware::angleToCounts;
 using autonom_hardware::countsPerWheelRevolution;
 
-TEST(EncoderModel, RobotMotorsGive1372CountsPerWheelTurn)
+TEST(EncoderModel, RobotMotorsGive1400CountsPerWheelTurn)
 {
-  // 98 CPR encoder on the back of the motor, 14:1 gearbox (430 rpm at the output).
-  EXPECT_EQ(countsPerWheelRevolution(98.0, 14.0), 1372);
+  // N20: 7 PPR Hall encoder on the back of the motor (28 counts x4), 1:50 gearbox (300 rpm at the output).
+  EXPECT_EQ(countsPerWheelRevolution(28.0, 50.0), 1400);
 }
 
 TEST(EncoderModel, RejectsInvalidEncoderOrGearbox)
@@ -23,17 +23,17 @@ TEST(EncoderModel, RejectsInvalidEncoderOrGearbox)
 
 TEST(EncoderModel, CountsWholeStepsOnly)
 {
-  const double step = 2.0 * M_PI / 1372.0;
-  EXPECT_EQ(angleToCounts(0.0, 1372), 0);
-  EXPECT_EQ(angleToCounts(0.99 * step, 1372), 0);
-  EXPECT_EQ(angleToCounts(1.01 * step, 1372), 1);
-  EXPECT_EQ(angleToCounts(2.0 * M_PI, 1372), 1372);
-  EXPECT_EQ(angleToCounts(-0.5 * step, 1372), -1);  // backwards past the start
-  EXPECT_EQ(angleToCounts(-10.0 * M_PI, 1372), -5 * 1372);
+  const double step = 2.0 * M_PI / 1400.0;
+  EXPECT_EQ(angleToCounts(0.0, 1400), 0);
+  EXPECT_EQ(angleToCounts(0.99 * step, 1400), 0);
+  EXPECT_EQ(angleToCounts(1.01 * step, 1400), 1);
+  EXPECT_EQ(angleToCounts(2.0 * M_PI, 1400), 1400);
+  EXPECT_EQ(angleToCounts(-0.5 * step, 1400), -1);  // backwards past the start
+  EXPECT_EQ(angleToCounts(-10.0 * M_PI, 1400), -5 * 1400);
 }
 
 TEST(EncoderModel, ResolutionAtTheWheel)
 {
-  // 1372 counts on a 32.5 mm wheel: 0.149 mm of travel per count.
-  EXPECT_NEAR(2.0 * M_PI * 0.0325 / 1372.0, 1.488e-4, 1e-7);
+  // 1400 counts on a 32.5 mm wheel: 0.146 mm of travel per count.
+  EXPECT_NEAR(2.0 * M_PI * 0.0325 / 1400.0, 1.459e-4, 1e-7);
 }

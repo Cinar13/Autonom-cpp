@@ -26,7 +26,10 @@ std::int64_t angleToCounts(double angle, std::int64_t counts_per_revolution)
   if (counts_per_revolution <= 0) {
     throw std::invalid_argument("counts_per_revolution must be positive");
   }
-  return static_cast<std::int64_t>(std::floor(angle * static_cast<double>(counts_per_revolution) / (2.0 * M_PI)));
+  // The tolerance keeps exact multiples of a count (e.g. one full turn, 2*pi * 1400 / 2*pi = 1399.9999...) from
+  // dropping a count to floating-point rounding.
+  const double counts = angle * static_cast<double>(counts_per_revolution) / (2.0 * M_PI);
+  return static_cast<std::int64_t>(std::floor(counts + 1e-9));
 }
 
 }  // namespace autonom_hardware

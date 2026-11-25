@@ -19,8 +19,8 @@
 motor_driver:
   ros__parameters:
     control_frequency_hz: 50.0
-    # Motor limit: 430 rpm at the 14:1 gearbox output = 45.03 rad/s (1.46 m/s on the 0.0325 m wheels).
-    max_wheel_speed: 45.03
+    # Motor limit: N20 6 V, 300 rpm at the 1:50 gearbox output = 31.42 rad/s (1.02 m/s on the 0.0325 m wheels).
+    max_wheel_speed: 31.42
     stop_velocity_threshold: 0.05
     cmd_vel_timeout: 0.5
     feedback_timeout: 0.25
@@ -43,16 +43,16 @@ motor_driver:
       kp: 0.04
       ki: 0.4
       kd: 0.0
-      # Feed-forward ~ 1 / no-load speed at full duty: 1 / 45.03 rad/s (430 rpm). Tune on the robot.
-      kf: 0.022
+      # Feed-forward ~ 1 / no-load speed at full duty: 1 / 31.42 rad/s (300 rpm). Tune on the robot.
+      kf: 0.032
       integral_limit: 0.5
       output_limit: 1.0
 
 wheel_odometry:
   ros__parameters:
-    # 98 CPR encoder on the back of each motor x 14:1 gearbox (430 rpm at the output) = 1372 counts per wheel
-    # revolution. The simulation's sim_wheel_odometry_node uses this value too.
-    ticks_per_revolution: 1372
+    # N20 Hall encoder on the back of each motor: 7 PPR = 28 counts per motor turn after x4 decoding, x 1:50 gearbox
+    # (300 rpm at the output) = 1400 counts per wheel revolution. The simulation's sim_wheel_odometry_node uses this value too.
+    ticks_per_revolution: 1400
     publish_frequency_hz: 50.0
     publish_tf: false
     odom_frame_id: "odom"

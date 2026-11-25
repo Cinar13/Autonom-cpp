@@ -29,7 +29,7 @@ MotorDriverNode::MotorDriverNode(const rclcpp::NodeOptions & options)
     declareParameter<double>(*this, "wheel_separation", 0.17, "Distance between wheel contact points [m]");
   const auto control_frequency =
     declareParameter<double>(*this, "control_frequency_hz", 50.0, "Velocity control loop rate [Hz]");
-  max_wheel_speed_ = declareParameter<double>(*this, "max_wheel_speed", 45.03, "Wheel speed saturation [rad/s]");
+  max_wheel_speed_ = declareParameter<double>(*this, "max_wheel_speed", 31.42, "Wheel speed saturation [rad/s]");
   stop_velocity_threshold_ = declareParameter<double>(
     *this, "stop_velocity_threshold", 0.05, "Wheel targets below this magnitude coast the motors [rad/s]");
   cmd_vel_timeout_ = rclcpp::Duration::from_seconds(declareParameter<double>(
@@ -93,7 +93,7 @@ PidGains MotorDriverNode::declarePidGains()
   gains.kp = declareParameter<double>(*this, "pid.kp", 0.04, "Proportional gain [effort per rad/s]", false);
   gains.ki = declareParameter<double>(*this, "pid.ki", 0.4, "Integral gain [effort per rad]", false);
   gains.kd = declareParameter<double>(*this, "pid.kd", 0.0, "Derivative gain [effort per rad/s^2]", false);
-  gains.kf = declareParameter<double>(*this, "pid.kf", 0.022, "Feed-forward [effort per rad/s of setpoint]", false);
+  gains.kf = declareParameter<double>(*this, "pid.kf", 0.032, "Feed-forward [effort per rad/s of setpoint]", false);
   gains.integral_limit =
     declareParameter<double>(*this, "pid.integral_limit", 0.5, "Integral term bound [effort]", false);
   gains.output_limit = declareParameter<double>(*this, "pid.output_limit", 1.0, "Max PWM effort in [0, 1]", false);

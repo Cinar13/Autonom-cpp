@@ -15,7 +15,7 @@ namespace autonom_hardware
 {
 
 /// Simulation stand-in for WheelOdometryNode: turns the simulated wheel joint angles (Gazebo joint_states) into
-/// encoder counts with the real robot's resolution (ticks_per_revolution, 1372 = 98 CPR x 14:1) and computes
+/// encoder counts with the real robot's resolution (ticks_per_revolution, 1400 = 28 CPR x 50:1) and computes
 /// /wheel/odom exactly like the real node (count deltas -> wheel angles -> DiffDriveKinematics -> Pose2D).
 /// Wheel slip still shows up, because the joint angle is what the wheel really turned.
 class SimWheelOdometryNode : public rclcpp::Node

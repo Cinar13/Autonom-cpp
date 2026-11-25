@@ -134,8 +134,8 @@ def generate_launch_description():
     )
 
     # Same EKF input contract as the real robot: /wheel/odom from encoder counts. The simulated wheel joint angles
-    # are counted with the real encoders' resolution (autonom_hardware hardware.yaml ticks_per_revolution: 98 CPR x
-    # 14:1 = 1372) and integrated exactly like the robot's wheel_odometry node, with its covariances.
+    # are counted with the real encoders' resolution (autonom_hardware hardware.yaml ticks_per_revolution: 28 CPR x
+    # 50:1 = 1400) and integrated exactly like the robot's wheel_odometry node, with its covariances.
     wheel_odometry = Node(
         package='autonom_hardware',
         executable='sim_wheel_odometry_node',

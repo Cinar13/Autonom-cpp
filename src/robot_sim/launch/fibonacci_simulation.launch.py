@@ -6,7 +6,7 @@ robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot
                  config/nav2_fibonacci_fast.yaml)
 
 Driving overrides (empty keeps the configured values):
-  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 1.46, its
+  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 1.02, its
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
@@ -43,11 +43,11 @@ from launch.substitutions import LaunchConfiguration
 
 ROBOTS = ('tb3', 'tb3_fast', 'autonom')
 # Per robot: the configured Nav2 velocity_smoother limits, the Gazebo DiffDrive limits of its model, and the highest
-# cruise speed a user may ask for (the real robot's motors stop at 430 rpm = 1.46 m/s).
+# cruise speed a user may ask for (the real robot's motors stop at 300 rpm = 1.02 m/s).
 LIMITS = {
     'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.5},
     'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.5},
-    'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 1.46, 'gz_turn': 3.0, 'max_speed': 1.46},
+    'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 1.02, 'gz_turn': 3.0, 'max_speed': 1.02},
 }
 MIN_SPEED = 0.1
 ACCEL_RANGE = (0.1, 3.0)  # m/s^2
@@ -124,7 +124,7 @@ def _open_gz_limits(robot):
     limits = LIMITS[robot]
     xacro = {'gz_max_angular_velocity': max(limits['gz_turn'], TURN_RANGE[1]),
              'gz_max_acceleration': ACCEL_RANGE[1]}
-    if robot != 'autonom':  # the real robot's model already stops at its motors' 1.46 m/s
+    if robot != 'autonom':  # the real robot's model already stops at its motors' 1.02 m/s
         xacro['gz_max_velocity'] = round(limits['max_speed'] + 0.05, 3)
     return ' '.join(f'{k}:={v}' for k, v in xacro.items())
 

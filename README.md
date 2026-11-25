@@ -1,6 +1,6 @@
 # Autonom — ROS 2 Jazzy autonomous mapping & racing robot
 
-Raspberry Pi 5 robot (TB6612FNG motor driver, 98 CPR × 14:1 quadrature encoders, RPLiDAR S3, optional BNO055 IMU) for the
+Raspberry Pi 5 robot (TB6612FNG motor driver, N20 300 rpm 1:50 motors with 7 PPR quadrature encoders, RPLiDAR S3, optional BNO055 IMU) for the
 Fibonacci Robot Olympiad race: it maps the unknown track with `slam_toolbox` on its first lap, freezes the map and
 then races continuous laps with Nav2. A Gazebo Harmonic simulation of the race arena runs the identical autonomy
 pipeline with `use_sim_time:=true`; the base station (Ubuntu 24.04) runs the simulation and RViz.
@@ -139,7 +139,7 @@ scripts/start_sim.sh robot:=tb3_fast --speed 1.2 --controller mppi --planner nav
 (`auto_start`). The older `circuit2` track: `ros2 launch robot_sim tb3_simulation.launch.py`.
 
 - The simulated LiDAR matches the RPLiDAR S3 (3200 samples/rev at 10 Hz, 0.1125°, 0.05–40 m) and the wheel
-  odometry counts at the real encoder resolution (1372 counts/rev), so `slam_toolbox.yaml` and the EKF are shared.
+  odometry counts at the real encoder resolution (1400 counts/rev), so `slam_toolbox.yaml` and the EKF are shared.
 - Gazebo DiffDrive's TF is bridged to `/sim/tf`, not `/tf`; the sim IMU goes through the same covariance relay as
   the BNO055 driver's values.
 - `robot_sim/config` only layers TurtleBot3 differences on the robot's `autonom_bringup/config`.
@@ -162,9 +162,9 @@ The theoretical best lap (optimal racing line at the robot's limits) is ~5.3 s: 
 
 ## Bring-up checklist (real robot)
 
-1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` (1372) in `autonom_hardware/config/hardware.yaml`.
+1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` (1400) in `autonom_hardware/config/hardware.yaml`.
 2. With wheels off the ground, check `/joint_states` velocities are positive when driving forward; fix with `*.inverted`.
-3. Tune `pid.kf` first (effort per rad/s, ~1 / 45.03), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
+3. Tune `pid.kf` first (effort per rad/s, ~1 / 31.42), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
 4. Check the LiDAR yaw (`laser_yaw` in the URDF) so the scan lines up with the robot's front in RViz.
 5. Check the BNO055 gyro before fusing it (`docs/07_imu_gyro.md`).
 

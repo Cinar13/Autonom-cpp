@@ -382,11 +382,11 @@ TEST_F(HardwareNodesTest, WheelOdometryTurnsEncoderEdgesIntoWheelAngle)
     "wheel/odom", 10, [&](const nav_msgs::msg::Odometry & msg) { odom = msg; });
   auto odometry = make<autonom_hardware::WheelOdometryNode>();
 
-  // One wheel revolution forward on both sides: 1372 x4 ticks = 343 cycles. The decoder counts B leading A
+  // One wheel revolution forward on both sides: 1400 x4 ticks = 350 cycles. The decoder counts B leading A
   // as positive; the right encoder is mirrored (right_encoder.inverted: true), so its forward is A leading B.
   std::vector<fake_gpiod::Edge> edges;
   std::int64_t t = 1'000'000'000;
-  for (int i = 0; i < 343; ++i) {
+  for (int i = 0; i < 350; ++i) {
     for (const auto & [pin, rising] : std::vector<std::pair<unsigned int, bool>>{
         {kLeftEncB, true}, {kLeftEncA, true}, {kLeftEncB, false}, {kLeftEncA, false},
         {kRightEncA, true}, {kRightEncB, true}, {kRightEncA, false}, {kRightEncB, false}})

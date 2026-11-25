@@ -25,7 +25,7 @@
 #   --no-rf2o      wheel odometry only, no rf2o laser odometry (use_rf2o:=false)
 #   --sim          against the running simulation, local or on the LAN (use_sim_time); robot:= tb3 | tb3_fast (default) | autonom
 #   --sim only (empty / Enter keeps the configured value):
-#     --mapping-speed, --speed (--race-speed)  0.1-1.5 m/s (robot:=autonom up to 1.46, its motors' 430 rpm)
+#     --mapping-speed, --speed (--race-speed)  0.1-1.5 m/s (robot:=autonom up to 1.02, its motors' 300 rpm)
 #     --mapping-accel, --race-accel            0.1-3.0 m/s^2 (configured 0.5 / 1.5)
 #     --turn-speed                             0.5-5.0 rad/s (configured 3.0; tb3 2.0)
 # Nav2 modes measured in docs/SESSION_2026-11-09.md: MPPI races fastest at 0.6 m/s, MPPI and RPP + Theta* at 1.2 m/s.
@@ -147,7 +147,7 @@ done
 case "$robot" in
   tb3) max_speed=1.5 default_mapping=0.22 default_race=0.22 default_turn=2.0 ;;
   tb3_fast) max_speed=1.5 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
-  autonom) max_speed=1.46 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
+  autonom) max_speed=1.02 default_mapping=0.3 default_race=0.6 default_turn=3.0 ;;
   *) echo "Unknown robot '$robot' (tb3, tb3_fast, autonom)." >&2; exit 1 ;;
 esac
 # name -> "low high unit label default"
