@@ -68,7 +68,7 @@ controller_server:
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.6
+      approach_velocity_scaling_dist: 0.3  # brake only in the last 0.3 m: exploration goals are just 0.6 m apart
       use_collision_detection: true
       # Short horizon: pure pursuit cuts the hairpins, and a 1 s horizon stalled the robot there.
       max_allowed_time_to_collision_up_to_carrot: 0.5
