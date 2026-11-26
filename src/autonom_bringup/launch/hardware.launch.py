@@ -23,14 +23,14 @@ def generate_launch_description():
     arguments = [
         DeclareLaunchArgument('use_imu', default_value='false', description='Start the IMU driver'),
         DeclareLaunchArgument('lidar_serial_port', default_value='/dev/ttyUSB0', description='RPLiDAR S3 serial port'),
-        # The fitted IMU is a BNO08x at 0x4B. For the BNO055 use:
+        # The fitted IMU is a BNO08x at 0x4B (autonom_hardware's own driver). For a BNO055 use:
         #   imu_package:=bno055 imu_executable:=bno055 imu_params_file:=<autonom_bringup>/config/imu.yaml
-        DeclareLaunchArgument('imu_package', default_value='bno08x_driver', description='IMU driver package'),
-        DeclareLaunchArgument('imu_executable', default_value='bno08x_driver', description='IMU driver executable'),
+        DeclareLaunchArgument('imu_package', default_value='autonom_hardware', description='IMU driver package'),
+        DeclareLaunchArgument('imu_executable', default_value='bno08x_node', description='IMU driver executable'),
         DeclareLaunchArgument(
             'imu_params_file',
             default_value=PathJoinSubstitution([bringup_share, 'config', 'imu_bno08x.yaml']),
-            description='IMU driver parameter file (also read by imu_covariance_relay)',
+            description='IMU driver parameter file',
         ),
     ]
 
@@ -89,26 +89,15 @@ def generate_launch_description():
         output='screen',
     )
 
-    # The driver's output goes to /imu/raw (the BNO08x driver publishes "/imu", the BNO055 one "imu").
-    # imu_covariance_relay (autonom_localization, also used for the simulated IMU) republishes it on /imu/data with
-    # the variance_* covariances from the same parameter file: the BNO08x driver leaves them all at zero, which makes
-    # the EKF trust the IMU completely and its rejection thresholds discard nearly every measurement.
+    # bno08x_node publishes imu/data (= /imu/data) with covariances; the bno055 driver publishes "imu" with its own.
     imu = Node(
         package=LaunchConfiguration('imu_package'),
         executable=LaunchConfiguration('imu_executable'),
+        name='imu',
         parameters=[LaunchConfiguration('imu_params_file')],
-        remappings=[('imu', '/imu/raw')],
-        condition=IfCondition(use_imu),
-        output='screen',
-    )
-    imu_relay = Node(
-        package='autonom_localization',
-        executable='imu_covariance_relay',
-        name='imu_covariance_relay',
-        parameters=[LaunchConfiguration('imu_params_file')],
-        remappings=[('imu_in', '/imu/raw'), ('imu_out', '/imu/data')],
+        remappings=[('imu', '/imu/data')],
         condition=IfCondition(use_imu),
         output='screen',
     )
 
-    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, lidar, imu, imu_relay])
+    return LaunchDescription(arguments + [robot_state_publisher, hardware_container, lidar, imu])

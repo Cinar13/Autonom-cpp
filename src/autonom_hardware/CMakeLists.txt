@@ -29,6 +29,8 @@ add_library(${PROJECT_NAME}_core SHARED
   src/diff_drive_kinematics.cpp
   src/encoder_model.cpp
   src/button_debouncer.cpp
+  src/i2c_device.cpp
+  src/bno08x.cpp
 )
 target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -41,6 +43,7 @@ add_library(${PROJECT_NAME}_nodes SHARED
   src/wheel_odometry_node.cpp
   src/sim_wheel_odometry_node.cpp
   src/start_button_node.cpp
+  src/bno08x_node.cpp
 )
 target_link_libraries(${PROJECT_NAME}_nodes PUBLIC
   ${PROJECT_NAME}_core
@@ -68,6 +71,10 @@ rclcpp_components_register_node(${PROJECT_NAME}_nodes
 rclcpp_components_register_node(${PROJECT_NAME}_nodes
   PLUGIN "autonom_hardware::StartButtonNode"
   EXECUTABLE start_button_node
+)
+rclcpp_components_register_node(${PROJECT_NAME}_nodes
+  PLUGIN "autonom_hardware::Bno08xNode"
+  EXECUTABLE bno08x_node
 )
 
 install(TARGETS ${PROJECT_NAME}_core ${PROJECT_NAME}_nodes
@@ -113,6 +120,11 @@ if(BUILD_TESTING)
     ament_add_gtest(${test_name} test/${test_name}.cpp TIMEOUT 60)
     target_link_libraries(${test_name} ${PROJECT_NAME}_core_fake)
   endforeach()
+
+  # BNO08x protocol and node against a fake sensor (the real chip's byte sequences).
+  ament_add_gtest(test_bno08x test/test_bno08x.cpp src/bno08x.cpp src/i2c_device.cpp src/bno08x_node.cpp TIMEOUT 60)
+  target_include_directories(test_bno08x PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_bno08x rclcpp::rclcpp rclcpp_components::component ${sensor_msgs_TARGETS})
 
   find_package(yaml_cpp_vendor REQUIRED)
   find_package(yaml-cpp REQUIRED)

@@ -10,7 +10,7 @@ pipeline with `use_sim_time:=true`; the base station (Ubuntu 24.04) runs the sim
 
 | Package | Role |
 |---|---|
-| `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → TB6612FNG PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`) |
+| `autonom_hardware` | C++17 components: `MotorDriverNode` (cmd_vel → wheel PID → TB6612FNG PWM), `WheelOdometryNode` (encoders → `/wheel/odom`, `/joint_states`), `Bno08xNode` (own SHTP/SH-2 BNO08x driver over I2C → `/imu/data`) |
 | `autonom_localization` | C++17 components: odometry and IMU covariance relays, `ScanDecimator` (thins S3 scans for rf2o), `ScanSpeckleFilter` (drops isolated returns before the costmaps) |
 | `autonom_patrol` | C++17 loop patrol: track planner (exploration, laps by driving distance, rear gate, start line) and the Nav2 patrol node |
 | `autonom_race` | Competition rules in software: race start gate (5 s start delay, blocks `/cmd_vel` until then, race state) |

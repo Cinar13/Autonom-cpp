@@ -160,12 +160,9 @@ TEST(Pinout, ImuIsOnI2c1AtTheBno08xAddress)
     GTEST_SKIP() << path << " not found";
   }
   const auto imu = YAML::LoadFile(path)["/**"]["ros__parameters"];
-  EXPECT_TRUE(imu["i2c"]["enabled"].as<bool>());
-  EXPECT_FALSE(imu["uart"]["enabled"].as<bool>());
-  EXPECT_FALSE(imu["spi"]["enabled"].as<bool>());
-  EXPECT_EQ(imu["i2c"]["bus"].as<std::string>(), "/dev/i2c-1") << "GPIO2/3 (pins 3/5) are I2C1";
-  EXPECT_EQ(std::stoi(imu["i2c"]["address"].as<std::string>(), nullptr, 16), 0x4B) << "BNO08x with SA0 high";
-  // imu_covariance_relay reads the same file; without these the EKF would get all-zero covariances.
+  EXPECT_EQ(imu["i2c_bus"].as<std::string>(), "/dev/i2c-1") << "GPIO2/3 (pins 3/5) are I2C1";
+  EXPECT_EQ(imu["i2c_address"].as<int>(), 0x4B) << "BNO08x with SA0 high";
+  // bno08x_node writes these into every message; zero covariances would make the EKF reject the IMU.
   EXPECT_EQ(imu["variance_angular_vel"].size(), 3u);
   EXPECT_EQ(imu["variance_acc"].size(), 3u);
   EXPECT_EQ(imu["variance_orientation"].size(), 3u);

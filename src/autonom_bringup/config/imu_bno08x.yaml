@@ -1,31 +1,18 @@
-# Default IMU: CEVA BNO08x (BNO085/BNO086) over I2C, driven by bno08x_ros2_driver (unmodified submodule).
-# Found on the robot at 0x4B on I2C bus 1 (header pins 3/5), 2026-11-26; the sensor's SA0 pin is high.
-# The driver publishes /imu with all covariances at zero; hardware.launch.py remaps it to /imu/raw and
-# autonom_localization's imu_covariance_relay republishes it on /imu/data with the variances below.
-# Orientation is the magnetometer-based rotation vector: the EKF uses it only to remove gravity (roll/pitch),
-# never fuses it (see ekf_imu.yaml).
+# Default IMU: CEVA BNO08x (BNO080/085/086) over I2C, driven by autonom_hardware's bno08x_node (own C++ SHTP/SH-2
+# driver). Found on the robot at 0x4B on I2C bus 1 (header pins 3/5), 2026-11-26: the board was sold as a BNO055
+# but answers only as a BNO08x (firmware 2.6.x); the sensor's SA0 pin is high.
+# Published on /imu/data in imu_link: calibrated gyro, accelerometer with gravity (ekf_imu.yaml removes it) and the
+# game rotation vector (no magnetometer; the EKF uses it only to remove gravity, never fuses it).
 /**:
   ros__parameters:
-    # bno08x_ros2_driver
+    i2c_bus: "/dev/i2c-1"
+    i2c_address: 0x4B
     frame_id: "imu_link"
-    i2c:
-      enabled: true
-      bus: "/dev/i2c-1"
-      address: "0x4B"
-    uart:
-      enabled: false
-    spi:
-      enabled: false
-    publish:
-      magnetic_field:
-        enabled: false
-        # The driver polls at the faster of the two rates, even when a report is disabled: keep this equal to imu.
-        rate: 100
-      imu:
-        enabled: true
-        rate: 100
+    report_rate_hz: 100.0
+    poll_rate_hz: 400.0
+    report_timeout: 0.5
 
-    # imu_covariance_relay (autonom_localization): same noise figures as the BNO055 config and the simulated IMU
+    # Written into every message; same noise figures as the BNO055 config and the simulated IMU.
     variance_orientation: [0.0159, 0.0159, 0.0159]
     variance_angular_vel: [0.0004, 0.0004, 0.0004]
     variance_acc: [0.017, 0.017, 0.017]
