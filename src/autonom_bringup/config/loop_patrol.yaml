@@ -19,7 +19,7 @@ loop_patrol:
     # Send the next lap when this many lap poses remain (continuous driving, no stop at the lap end).
     preempt_poses_remaining: 1
     # Map slowly, race fast (m/s): the mapping lap at full speed overshot hairpins into corner pockets.
-    exploration_speed: 0.45
+    exploration_speed: 0.3
     race_speed: 0.6
     # Acceleration limits (velocity_smoother max_accel [x m/s^2, y, theta rad/s^2]): gentle while mapping, then
     # back to nav2.yaml's velocity_smoother values for the race.
