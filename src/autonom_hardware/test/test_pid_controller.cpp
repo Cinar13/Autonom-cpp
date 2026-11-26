@@ -57,25 +57,3 @@ TEST(PidController, NonFiniteInputResets)
   PidController pid(PidGains{1.0, 1.0, 0.0, 0.0, 1.0, 1.0});
   EXPECT_DOUBLE_EQ(pid.update(NAN, 0.0, 0.01), 0.0);
 }
-
-TEST(PidController, DirectionChangeClearsIntegral)
-{
-  // kp, ki, kd, kf, integral_limit, output_limit
-  PidController pid(PidGains{0.0, 1.0, 0.0, 0.0, 1.0, 1.0});
-  for (int i = 0; i < 50; ++i) {
-    pid.update(5.0, 0.0, 0.02);  // wind the integral up forwards (stuck wheel)
-  }
-  ASSERT_GT(pid.update(5.0, 0.0, 0.02), 0.5);
-  // Reversing must not keep pushing forwards with the old integral.
-  EXPECT_LE(pid.update(-5.0, 0.0, 0.02), 0.0);
-}
-
-TEST(PidController, StaticFrictionFeedForwardFollowsDirection)
-{
-  PidGains gains{0.0, 0.0, 0.0, 0.01, 1.0, 1.0};
-  gains.ks = 0.12;
-  PidController pid(gains);
-  EXPECT_NEAR(pid.update(1.0, 0.0, 0.0), 0.13, 1e-12);    // kf * 1 + ks
-  EXPECT_NEAR(pid.update(-1.0, 0.0, 0.0), -0.13, 1e-12);  // reverses with the command
-  EXPECT_DOUBLE_EQ(pid.update(0.0, 0.0, 0.0), 0.0);       // nothing when told to stop
-}

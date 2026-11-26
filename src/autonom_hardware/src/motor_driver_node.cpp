@@ -94,8 +94,6 @@ PidGains MotorDriverNode::declarePidGains()
   gains.ki = declareParameter<double>(*this, "pid.ki", 0.4, "Integral gain [effort per rad]", false);
   gains.kd = declareParameter<double>(*this, "pid.kd", 0.0, "Derivative gain [effort per rad/s^2]", false);
   gains.kf = declareParameter<double>(*this, "pid.kf", 0.032, "Feed-forward [effort per rad/s of setpoint]", false);
-  gains.ks = declareParameter<double>(
-    *this, "pid.ks", 0.0, "Static-friction feed-forward [effort added in the setpoint's direction]", false);
   gains.integral_limit =
     declareParameter<double>(*this, "pid.integral_limit", 0.5, "Integral term bound [effort]", false);
   gains.output_limit = declareParameter<double>(*this, "pid.output_limit", 1.0, "Max PWM effort in [0, 1]", false);
@@ -116,7 +114,6 @@ rcl_interfaces::msg::SetParametersResult MotorDriverNode::onParametersChanged(
       name == "pid.ki" ? &gains.ki :
       name == "pid.kd" ? &gains.kd :
       name == "pid.kf" ? &gains.kf :
-      name == "pid.ks" ? &gains.ks :
       name == "pid.integral_limit" ? &gains.integral_limit :
       name == "pid.output_limit" ? &gains.output_limit :
       nullptr;
