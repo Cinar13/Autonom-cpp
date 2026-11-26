@@ -1,9 +1,9 @@
 # Nav2 for mapping-while-navigating: slam_toolbox provides /map and map->odom (no AMCL / map_server).
 # Regulated Pure Pursuit by default, to keep the Raspberry Pi 5 CPU budget for SLAM. bringup.launch.py
 # controller:=mppi keeps RPP for the mapping lap and races with MPPI (config/nav2_mppi.yaml; CPU on the Pi untested).
-# Tuned for the real robot (r = 0.15 m, 0.6 m/s on straights) on the Fibonacci race arena: 2.49 x 2.10 m, ~0.6 m
+# Tuned for the real robot (19 x 17.5 cm rectangular footprint, 0.6 m/s on straights) on the Fibonacci race arena: 2.49 x 2.10 m, ~0.6 m
 # corridors, three hairpins (robot_sim/models/Fibonacci_arena). robot_sim overlays adapt it to the TurtleBot3.
-# Competition tuning (docs/06_competition_rules.md): hard margin robot_radius + 20 mm (user decision, 2026-11-07)
+# Competition tuning (docs/06_competition_rules.md): hard margin footprint + 20 mm (user decision, 2026-11-07)
 # plus a soft, steep cost out to `inflation_radius` (cost_scaling_factor 10, ~1/3 cost 0.1 m off the wall): the
 # fastest path keeps ~0.1 m off inside corners, so RPP's lookahead collision check no longer stalls the robot
 # there, yet it can still squeeze to 20 mm to pass another robot.
@@ -97,7 +97,11 @@ local_costmap:
       width: 2
       height: 2
       resolution: 0.05
-      robot_radius: 0.15
+      # Real robot (measured 2026-11-26): 19 cm long, 17.5 cm wide, wheel axle (base_footprint) 6.5 cm from the
+      # back: x -0.065..+0.125, y -0.0875..+0.0875. A circle around it needs r = 0.153 and wasted the corridor
+      # width in corners (stuck at the 4th hairpin). Padding 0.02 keeps the hard margin (+20 mm, docs/06).
+      footprint: "[[0.125, 0.0875], [0.125, -0.0875], [-0.065, -0.0875], [-0.065, 0.0875]]"
+      footprint_padding: 0.02
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -128,7 +132,11 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
-      robot_radius: 0.15
+      # Real robot (measured 2026-11-26): 19 cm long, 17.5 cm wide, wheel axle (base_footprint) 6.5 cm from the
+      # back: x -0.065..+0.125, y -0.0875..+0.0875. A circle around it needs r = 0.153 and wasted the corridor
+      # width in corners (stuck at the 4th hairpin). Padding 0.02 keeps the hard margin (+20 mm, docs/06).
+      footprint: "[[0.125, 0.0875], [0.125, -0.0875], [-0.065, -0.0875], [-0.065, 0.0875]]"
+      footprint_padding: 0.02
       resolution: 0.05
       track_unknown_space: true
       # Live LiDAR only, no static layer from the SLAM map: obstacles that leave (other robots, a removed box)

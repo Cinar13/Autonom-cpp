@@ -13,7 +13,7 @@
   ros__parameters:
     gpio_chip: "pinctrl-rp1"
     wheel_radius: 0.0325
-    wheel_separation: 0.17
+    wheel_separation: 0.14  # wheel centre to wheel centre, measured on the robot 2026-11-26 (was 0.17)
     left_joint_name: "left_wheel_joint"
     right_joint_name: "right_wheel_joint"
 
