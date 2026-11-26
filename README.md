@@ -60,7 +60,8 @@ dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
 
 BCM GPIO numbers, as used in `autonom_hardware/config/hardware.yaml`, following the wiring schematic: a
 TB6612FNG drives both motors (VM from the 6 V buck regulator, VCC from the Pi's 3.3 V), channel A the left
-motor and channel B the right.
+motor and channel B the right. The encoder pairs are wired crossed with respect to the original schematic
+(verified on the robot 2026-11-26); the table shows the real wiring.
 
 | Function | BCM GPIO | Header pin | Parameter |
 |---|---|---|---|
@@ -70,8 +71,8 @@ motor and channel B the right.
 | Right motor BIN1 / BIN2 | 20 / 21 | 38 / 40 | `right_motor.in1_pin` / `in2_pin` |
 | TB6612 STBY (high = enabled) | 26 | 37 | `standby_pin` |
 | Start button (other side to GND) | 16 | 36 | `start_button.pin` |
-| Left encoder A / B | 17 / 27 | 11 / 13 | `left_encoder.pin_a` / `pin_b` |
-| Right encoder A / B | 23 / 24 | 16 / 18 | `right_encoder.pin_a` / `pin_b` |
+| Left encoder A / B | 23 / 24 | 16 / 18 | `left_encoder.pin_a` / `pin_b` |
+| Right encoder A / B | 17 / 27 | 11 / 13 | `right_encoder.pin_a` / `pin_b` |
 | BNO055 IMU SDA / SCL (I2C1, address 0x28) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu.yaml` |
 | RPLiDAR S3 | USB (`/dev/ttyUSB0`, 1 000 000 baud) | — | `lidar_serial_port` launch argument |
 
@@ -79,6 +80,29 @@ Encoders and the IMU run from 3.3 V: the Pi's GPIO pins are not 5 V tolerant, so
 up to 5 V (the internal pull-ups are enabled with `pull_up: true`). The start button uses the internal pull-up
 too (pressed = low, 30 ms debounce) and publishes `/race/start_signal`; it must be seen released once after
 start-up before a press counts, so a stuck or shorted button can never start the race.
+
+### Checking encoders and motors (any new build, wheels off the ground)
+
+Sign convention: a positive wheel velocity means that wheel rolls the robot forward. Each side meets it on its
+own through two independent flags: the right motor and the left encoder are mirror-mounted, so
+`right_motor.inverted` and `left_encoder.inverted` are `true`. The sign belongs to the encoder, not to the side:
+if the pairs are ever re-wired, each pair keeps its own `inverted`. Get each flag right on its own, or the speed
+loop runs away.
+
+1. **Encoders, motors unpowered.** Standing behind the robot, turn one wheel one turn forward by hand. That
+   wheel's joint in `/joint_states` must change by about +2π (+6.28 rad) and the other joint must not change.
+   The wrong joint moves: the pin pairs are swapped. It moves by −2π: flip that encoder's `inverted`.
+2. **One motor at a time, closed loop.** Cancel one wheel with the turn rate: `v = 0.05`, `w = ±v / (b/2) = ±0.588`
+   (b = 0.17 m) gives one wheel 2v/r = 3.08 rad/s and the other 0. Expect a steady speed near the target. If it
+   races to full speed, the motor and encoder signs disagree; with the encoder already passing step 1, flip that
+   motor's `inverted`. Stop as soon as a wheel goes above ~10 rad/s: a runaway at full duty browned out the Pi twice.
+3. **Only one driver process.** Two leftover `motor_driver` instances fighting over the same pins give
+   back-and-forth motion that looks like a wiring fault (`pgrep -a motor_driver`).
+
+Scaling: 7 PPR × 4 (quadrature) × 50 (gearbox) = 1400 counts per wheel revolution. Speed is Δcounts / dt at
+50 Hz, so at 3 rad/s that is ~13 counts per cycle and one count of jitter is ±0.22 rad/s (the 2.9 / 3.1 rad/s
+flicker is normal). If the PID needs a smoother signal at low speed, use a longer window or a light low-pass
+(α ≈ 0.3); don't add derivative gain on the raw signal.
 
 Give the user access to `/dev/gpiochip*`, `/sys/class/pwm` and the LiDAR serial port (group membership
 or a udev rule, depending on the image; `dialout` covers the serial port), then build everything:

@@ -2,8 +2,8 @@
 # Hardware PWM on RPi 5 needs /boot/firmware/config.txt: dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
 # (GPIO12 -> PWM0 channel 0, GPIO13 -> PWM0 channel 1). Check `ls /sys/class/pwm` for the chip index.
 # Pinout (BCM / header pin), from the wiring schematic (TB6612FNG motor driver, VM from the 6 V buck, VCC 3.3 V):
-#   left  motor (TB6612 channel A): PWMA GPIO12 / 32, AIN1 GPIO5 / 29, AIN2 GPIO6 / 31;  encoder A GPIO17 / 11, B GPIO27 / 13
-#   right motor (TB6612 channel B): PWMB GPIO13 / 33, BIN1 GPIO20 / 38, BIN2 GPIO21 / 40; encoder A GPIO23 / 16, B GPIO24 / 18
+#   left  motor (TB6612 channel A): PWMA GPIO12 / 32, AIN1 GPIO5 / 29, AIN2 GPIO6 / 31;  encoder A GPIO23 / 16, B GPIO24 / 18
+#   right motor (TB6612 channel B): PWMB GPIO13 / 33, BIN1 GPIO20 / 38, BIN2 GPIO21 / 40; encoder A GPIO17 / 11, B GPIO27 / 13
 #   TB6612 STBY GPIO26 / 37 (shared, high = enabled)
 #   Start button GPIO16 / 36, other side to GND (internal pull-up, pressed = low)
 #   BNO055 IMU on I2C1 (SDA GPIO2 / 3, SCL GPIO3 / 5), address 0x28; RPLiDAR S3 on USB (/dev/ttyUSB0).
@@ -57,15 +57,17 @@ wheel_odometry:
     publish_tf: false
     odom_frame_id: "odom"
     base_frame_id: "base_footprint"
+    # Left/right encoders swapped 2026-11-26 after a hand-turn test on the robot (GPIO23/24 reads the left wheel,
+    # GPIO17/27 the right). Each pin pair kept its own sign; the left sign is still unverified.
     left_encoder:
-      pin_a: 17
-      pin_b: 27
-      inverted: false
-      pull_up: true
-    right_encoder:
       pin_a: 23
       pin_b: 24
       inverted: true
+      pull_up: true
+    right_encoder:
+      pin_a: 17
+      pin_b: 27
+      inverted: false
       pull_up: true
     pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e+6, 1.0e+6, 1.0e+6, 1.0e-2]
     twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-2]

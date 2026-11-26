@@ -61,8 +61,8 @@ WheelOdometryNode::WheelOdometryNode(const rclcpp::NodeOptions & options)
   kinematics_.emplace(wheel_radius, wheel_separation);
   radians_per_tick_ = 2.0 * M_PI / static_cast<double>(ticks_per_revolution);
 
-  const QuadratureEncoderConfig left_config = declareEncoderConfig("left_encoder", 17, 27);
-  const QuadratureEncoderConfig right_config = declareEncoderConfig("right_encoder", 23, 24);
+  const QuadratureEncoderConfig left_config = declareEncoderConfig("left_encoder", 23, 24);
+  const QuadratureEncoderConfig right_config = declareEncoderConfig("right_encoder", 17, 27);
   try {
     const GpioChipPtr chip = openGpioChip(gpio_chip);
     left_encoder_ = std::make_unique<QuadratureEncoder>(chip, left_config, "autonom_left_encoder");

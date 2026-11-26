@@ -32,7 +32,7 @@ namespace
 
 // The wiring schematic (BCM numbers).
 constexpr unsigned int kAin1 = 5, kAin2 = 6, kBin1 = 20, kBin2 = 21, kStby = 26;
-constexpr unsigned int kLeftEncA = 17, kLeftEncB = 27, kRightEncA = 23, kRightEncB = 24;
+constexpr unsigned int kLeftEncA = 23, kLeftEncB = 24, kRightEncA = 17, kRightEncB = 27;
 constexpr unsigned int kStartButton = 16;
 constexpr unsigned int kPwmLeft = 0, kPwmRight = 1;  // GPIO12 / GPIO13 via dtoverlay=pwm-2chan
 
@@ -383,13 +383,13 @@ TEST_F(HardwareNodesTest, WheelOdometryTurnsEncoderEdgesIntoWheelAngle)
   auto odometry = make<autonom_hardware::WheelOdometryNode>();
 
   // One wheel revolution forward on both sides: 1400 x4 ticks = 350 cycles. The decoder counts B leading A
-  // as positive; the right encoder is mirrored (right_encoder.inverted: true), so its forward is A leading B.
+  // as positive; the left encoder is mirrored (left_encoder.inverted: true), so its forward is A leading B.
   std::vector<fake_gpiod::Edge> edges;
   std::int64_t t = 1'000'000'000;
   for (int i = 0; i < 350; ++i) {
     for (const auto & [pin, rising] : std::vector<std::pair<unsigned int, bool>>{
-        {kLeftEncB, true}, {kLeftEncA, true}, {kLeftEncB, false}, {kLeftEncA, false},
-        {kRightEncA, true}, {kRightEncB, true}, {kRightEncA, false}, {kRightEncB, false}})
+        {kLeftEncA, true}, {kLeftEncB, true}, {kLeftEncA, false}, {kLeftEncB, false},
+        {kRightEncB, true}, {kRightEncA, true}, {kRightEncB, false}, {kRightEncA, false}})
     {
       edges.push_back({pin, rising, t += 1000});
     }
