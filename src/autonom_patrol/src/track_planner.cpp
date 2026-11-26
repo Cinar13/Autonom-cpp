@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <deque>
 #include <limits>
 
@@ -77,12 +78,31 @@ Mask safeFreeSpace(const Grid & grid, int clearance_cells, int free_threshold)
 {
   const int w = grid.width;
   const int h = grid.height;
+  // Distance (4-connected cells) to the nearest occupied cell, up to clearance_cells.
   std::vector<int> distance(grid.data.size(), -1);
   std::deque<int> queue;
+  // Unknown cells are never driven into, but only kept kUnknownMargin cells away: LiDAR shadows (the robot's own
+  // cables, small gaps) leave scattered unknown cells right next to the robot, and a full clearance around each of
+  // them closed a 0.5 m corridor completely on the real robot. Walls keep the full clearance.
+  constexpr int kUnknownMargin = 1;
+  Mask near_unknown(grid.data.size(), 0);
   for (std::size_t i = 0; i < grid.data.size(); ++i) {
-    if (!grid.isFree(i, free_threshold)) {
+    if (grid.isFree(i, free_threshold)) {
+      continue;
+    }
+    if (grid.data[i] >= 0) {  // occupied
       distance[i] = 0;
       queue.push_back(static_cast<int>(i));
+      continue;
+    }
+    const int row = static_cast<int>(i) / w;
+    const int col = static_cast<int>(i) % w;
+    for (int r = row - kUnknownMargin; r <= row + kUnknownMargin; ++r) {
+      for (int c = col - kUnknownMargin; c <= col + kUnknownMargin; ++c) {
+        if (grid.inside(r, c) && std::abs(r - row) + std::abs(c - col) <= kUnknownMargin) {
+          near_unknown[grid.index(r, c)] = 1;
+        }
+      }
     }
   }
   while (!queue.empty()) {
@@ -105,10 +125,12 @@ Mask safeFreeSpace(const Grid & grid, int clearance_cells, int free_threshold)
   Mask safe(grid.data.size(), 0);
   for (int row = 0; row < h; ++row) {
     for (int col = 0; col < w; ++col) {
+      const std::size_t i = grid.index(row, col);
       // Outside the map counts as an obstacle one cell beyond the border.
       const int border = std::min({row + 1, h - row, col + 1, w - col});
-      const int d = distance[grid.index(row, col)];
-      safe[grid.index(row, col)] = (d < 0 || d > clearance_cells) && border > clearance_cells ? 1 : 0;
+      const int d = distance[i];
+      safe[i] = grid.isFree(i, free_threshold) && !near_unknown[i] && (d < 0 || d > clearance_cells) &&
+        border > clearance_cells ? 1 : 0;
     }
   }
   return safe;
