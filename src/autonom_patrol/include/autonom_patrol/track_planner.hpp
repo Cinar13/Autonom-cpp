@@ -116,6 +116,11 @@ std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, c
 std::optional<Waypoint> planExplorationGoal(
   const Grid & grid, Point robot, const LoopSettings & settings, std::optional<double> heading);
 
+/// planExplorationGoal along `heading`; at a dead end (nothing reachable ahead, e.g. the robot drove past a corner's
+/// opening) it also looks 90 deg left and right and takes the farther goal. Never looks back (no turning round).
+std::optional<Waypoint> planExplorationGoalOrTurn(
+  const Grid & grid, Point robot, const LoopSettings & settings, double heading);
+
 /// Orientation of the lap polygon (negative signed area = clockwise).
 bool loopIsClockwise(const std::vector<Waypoint> & waypoints);
 

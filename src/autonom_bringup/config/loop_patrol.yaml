@@ -4,7 +4,7 @@ loop_patrol:
     global_frame: map
     robot_base_frame: base_footprint
     # Race arena, ~0.6 m corridors: waypoints 0.13 m off the walls (robot r = 0.15 m).
-    clearance: 0.13
+    clearance: 0.10  # robot 17.5 cm wide + 20 mm margin (measured 2026-11-26); 0.13 closed a 0.3 m corner opening
     min_spacing: 0.3
     # Lap waypoints every waypoint_spacing metres of driving distance along the track centre line; a closed
     # ring shorter than min_loop_length is not a lap. The lap is cut at the rear gate (rear_gate_offset),

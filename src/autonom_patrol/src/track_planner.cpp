@@ -338,8 +338,29 @@ std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, c
   return waypoints;
 }
 
+namespace
+{
+
+/// planExplorationGoal with the rear cut along `gate_heading` (the direction of travel) while goals are searched
+/// ahead along `heading`; goals may lie at most `behind_limit` behind the robot along `gate_heading`.
+std::optional<Waypoint> explorationGoal(
+  const Grid & grid, Point robot, const LoopSettings & settings, std::optional<double> heading,
+  std::optional<double> gate_heading, double behind_limit);
+
+}  // namespace
+
 std::optional<Waypoint> planExplorationGoal(
   const Grid & grid, Point robot, const LoopSettings & settings, std::optional<double> heading)
+{
+  return explorationGoal(grid, robot, settings, heading, heading, 0.0);
+}
+
+namespace
+{
+
+std::optional<Waypoint> explorationGoal(
+  const Grid & grid, Point robot, const LoopSettings & settings, std::optional<double> heading,
+  std::optional<double> gate_heading, double behind_limit)
 {
   if (!grid.valid()) {
     return std::nullopt;
@@ -347,8 +368,8 @@ std::optional<Waypoint> planExplorationGoal(
   const double res = grid.resolution;
   const int clearance_cells = std::max(1, static_cast<int>(std::ceil(settings.clearance / res)));
   Mask safe = safeFreeSpace(grid, clearance_cells, settings.free_threshold);
-  if (heading) {
-    for (const auto & cell : rearGate(grid, robot, *heading, settings.cut_offset, settings.cut_half_width).cells) {
+  if (gate_heading) {
+    for (const auto & cell : rearGate(grid, robot, *gate_heading, settings.cut_offset, settings.cut_half_width).cells) {
       safe[grid.index(cell.row, cell.col)] = 0;
     }
   }
@@ -391,7 +412,10 @@ std::optional<Waypoint> planExplorationGoal(
       continue;
     }
     const Point p = grid.centre(static_cast<int>(i / grid.width), static_cast<int>(i % grid.width));
-    if ((p.x - robot.x) * cos_h + (p.y - robot.y) * sin_h > 0.0) {
+    const bool ahead = (p.x - robot.x) * cos_h + (p.y - robot.y) * sin_h > 0.0;
+    const bool not_back = !gate_heading ||
+      (p.x - robot.x) * std::cos(*gate_heading) + (p.y - robot.y) * std::sin(*gate_heading) > -behind_limit;
+    if (ahead && not_back) {
       reach[i] = steps[i];
       max_reach = std::max(max_reach, steps[i]);
     }
@@ -424,6 +448,32 @@ std::optional<Waypoint> planExplorationGoal(
   }
   const Point p = grid.centre(static_cast<int>(*best / grid.width), static_cast<int>(*best % grid.width));
   return Waypoint{p.x, p.y, std::atan2(p.y - robot.y, p.x - robot.x)};
+}
+
+}  // namespace
+
+std::optional<Waypoint> planExplorationGoalOrTurn(
+  const Grid & grid, Point robot, const LoopSettings & settings, double heading)
+{
+  if (auto goal = planExplorationGoal(grid, robot, settings, heading)) {
+    return goal;
+  }
+  // Dead end ahead. On the robot this happened when it drove past the opening of a left turn: the opening lay just
+  // behind its centre, so "ahead only" found nothing and it never turned. Look sideways, never backwards.
+  std::optional<Waypoint> best;
+  double best_distance = -1.0;
+  for (const double turn : {M_PI / 2.0, -M_PI / 2.0}) {
+    // Search sideways, but keep the rear cut along the direction of travel and allow at most cut_offset behind
+    // the robot: enough for a corner opening it has just passed, never the corridor it came along.
+    if (const auto goal = explorationGoal(grid, robot, settings, heading + turn, heading, settings.cut_offset)) {
+      const double d = std::hypot(goal->x - robot.x, goal->y - robot.y);
+      if (d > best_distance) {
+        best_distance = d;
+        best = goal;
+      }
+    }
+  }
+  return best;
 }
 
 bool loopIsClockwise(const std::vector<Waypoint> & waypoints)

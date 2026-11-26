@@ -270,6 +270,53 @@ TEST(TrackPlanner, ExplorationGoalIgnoresShadowBesideTheRobot)
   EXPECT_NEAR(goal->y, 0.0, 0.03);
 }
 
+/// Corridor along +x (0.5 m wide, centre y = 0) ending in a wall at x = 0.75; a left branch (+y) at x 0.25..0.7.
+/// The robot stands at x = 0.6 facing +x, past part of the branch opening (what happened on the robot).
+Grid deadEndWithLeftBranch()
+{
+  Grid g = makeGrid(200, 200, -1);
+  fill(g, 95, 105, 60, 115, 0);      // main corridor, x -2.0..0.75
+  fill(g, 94, 95, 60, 116, 100);     // right wall (y = -0.275)
+  fill(g, 105, 106, 60, 105, 100);   // left wall up to the branch
+  fill(g, 95, 106, 115, 116, 100);   // dead-end wall at x = 0.75
+  fill(g, 105, 140, 105, 114, 0);    // left branch, x 0.25..0.7, up to y = 2.0
+  fill(g, 105, 140, 104, 105, 100);  // branch walls
+  fill(g, 105, 140, 114, 115, 100);
+  return g;
+}
+
+TEST(TrackPlanner, DeadEndTurnsIntoTheSideOpening)
+{
+  LoopSettings s;
+  s.clearance = 0.13;
+  s.min_spacing = 0.3;
+  s.max_exploration_distance = 0.6;
+  s.cut_offset = 0.25;
+  s.cut_half_width = 0.6;
+  const Grid g = deadEndWithLeftBranch();
+  EXPECT_FALSE(planExplorationGoal(g, {0.6, 0.0}, s, 0.0)) << "nothing ahead: the wall";
+  const auto goal = planExplorationGoalOrTurn(g, {0.6, 0.0}, s, 0.0);
+  ASSERT_TRUE(goal);
+  EXPECT_GT(goal->y, 0.3) << "goal up the left branch";
+  EXPECT_GT(goal->x, 0.2);
+  EXPECT_LT(goal->x, 0.75);
+}
+
+TEST(TrackPlanner, DeadEndNeverTurnsBack)
+{
+  // Same dead end without the branch: the only way out is back, which the patrol must not take.
+  Grid g = deadEndWithLeftBranch();
+  fill(g, 105, 140, 104, 115, -1);
+  fill(g, 105, 106, 60, 116, 100);
+  LoopSettings s;
+  s.clearance = 0.13;
+  s.min_spacing = 0.3;
+  s.max_exploration_distance = 0.6;
+  s.cut_offset = 0.25;
+  s.cut_half_width = 0.6;
+  EXPECT_FALSE(planExplorationGoalOrTurn(g, {0.6, 0.0}, s, 0.0));
+}
+
 TEST(TrackPlanner, ExplorationDistanceCap)
 {
   Grid g = makeGrid(200, 200, -1);

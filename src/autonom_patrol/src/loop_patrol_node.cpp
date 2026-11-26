@@ -306,7 +306,7 @@ void LoopPatrolNode::planAndSend()
     }
   }
   const double travel = gate_direction_ ? *gate_direction_ : pose->yaw;
-  if (const auto goal = planExplorationGoal(*grid, robot, settings_, travel)) {
+  if (const auto goal = planExplorationGoalOrTurn(*grid, robot, settings_, travel)) {
     sendExploration(*goal);
     return;
   }
