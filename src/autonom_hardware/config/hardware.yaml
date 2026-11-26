@@ -7,7 +7,7 @@
 #   (Both motor channels and both encoder pairs are crossed with respect to the original schematic; this is the real wiring.)
 #   TB6612 STBY GPIO26 / 37 (shared, high = enabled)
 #   Start button GPIO16 / 36, other side to GND (internal pull-up, pressed = low)
-#   BNO055 IMU on I2C1 (SDA GPIO2 / 3, SCL GPIO3 / 5), address 0x28; RPLiDAR S3 on USB (/dev/ttyUSB0).
+#   BNO08x (BNO085/086) IMU on I2C1 (SDA GPIO2 / 3, SCL GPIO3 / 5), address 0x4B; RPLiDAR S3 on USB (/dev/ttyUSB0).
 
 /**:
   ros__parameters:

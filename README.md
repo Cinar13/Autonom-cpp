@@ -1,6 +1,6 @@
 # Autonom — ROS 2 Jazzy autonomous mapping & racing robot
 
-Raspberry Pi 5 robot (TB6612FNG motor driver, N20 300 rpm 1:50 motors with 7 PPR quadrature encoders, RPLiDAR S3, optional BNO055 IMU) for the
+Raspberry Pi 5 robot (TB6612FNG motor driver, N20 300 rpm 1:50 motors with 7 PPR quadrature encoders, RPLiDAR S3, optional BNO08x IMU) for the
 Fibonacci Robot Olympiad race: it maps the unknown track with `slam_toolbox` on its first lap, freezes the map and
 then races continuous laps with Nav2. A Gazebo Harmonic simulation of the race arena runs the identical autonomy
 pipeline with `use_sim_time:=true`; the base station (Ubuntu 24.04) runs the simulation and RViz.
@@ -23,7 +23,7 @@ pipeline with `use_sim_time:=true`; the base station (Ubuntu 24.04) runs the sim
 ```
 [use_rf2o] /scan ─► decimator ─► rf2o ─► covariance relay ─► /rf2o/odom ─┐
 encoders (sim: Gazebo wheel joints) ─► /wheel/odom ──────────────────────┼─► EKF ─► /odometry/filtered, TF odom→base_footprint
-[use_imu] bno055 (sim: Gazebo IMU ─► covariance relay) ─► /imu/data ─────┘
+[use_imu] bno08x (sim: Gazebo IMU ─► covariance relay) ─► /imu/data ─────┘
 /scan ─► slam_toolbox ─► /map, TF map→odom
 /scan ─► speckle filter ─► /scan_filtered ─► Nav2 costmaps
 loop_patrol ─► Nav2 (exploration goals, then one NavigateThroughPoses goal per lap)
@@ -73,7 +73,7 @@ the original schematic (verified on the robot 2026-11-26); the table shows the r
 | Start button (other side to GND) | 16 | 36 | `start_button.pin` |
 | Left encoder A / B | 23 / 24 | 16 / 18 | `left_encoder.pin_a` / `pin_b` |
 | Right encoder A / B | 17 / 27 | 11 / 13 | `right_encoder.pin_a` / `pin_b` |
-| BNO055 IMU SDA / SCL (I2C1, address 0x28) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu.yaml` |
+| BNO08x IMU SDA / SCL (I2C1, address 0x4B) | 2 / 3 | 3 / 5 | `autonom_bringup/config/imu_bno08x.yaml` |
 | RPLiDAR S3 | USB (`/dev/ttyUSB0`, 1 000 000 baud) | — | `lidar_serial_port` launch argument |
 
 Encoders and the IMU run from 3.3 V: the Pi's GPIO pins are not 5 V tolerant, so never pull encoder outputs
@@ -130,7 +130,7 @@ export CYCLONEDDS_URI=file://$HOME/Autonom-cpp/install/autonom_bringup/share/aut
 ```bash
 # Raspberry Pi 5 (no GUI application runs on the robot)
 scripts/start_robot.sh                         # wheels + rf2o, RPP + NavFn
-scripts/start_robot.sh --imu                   # + BNO055 fused in the EKF
+scripts/start_robot.sh --imu                   # + BNO08x fused in the EKF
 scripts/start_robot.sh --controller mppi       # RPP maps, MPPI races (see Nav2 modes)
 scripts/start_robot.sh --planner thetastar     # Theta* global planner
 scripts/start_robot.sh --map-only              # map/teleop only, no loop patrol

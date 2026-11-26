@@ -33,7 +33,7 @@ Nothing here has run on real hardware. The simulation has run, but a full lap wa
                         [use_rf2o] /scan -> scan_decimator -> rf2o -> covariance relay -> /rf2o/odom --+
 real: encoders -> wheel_odometry -> /wheel/odom                                                        |
 sim:  Gazebo /odom -> covariance relay -> /wheel/odom ---------------------------------------------- +--> EKF -> /odometry/filtered
-                        [use_imu]  BNO055 or Gazebo IMU -> /imu/data ------------------------------------+    + TF odom->base_footprint
+                        [use_imu]  BNO08x or Gazebo IMU -> /imu/data ------------------------------------+    + TF odom->base_footprint
 EKF inputs: wheels vx + vy (= 0) + vyaw, rf2o vx only, IMU vyaw + ax (all velocities / accelerations, no poses)
 /scan -> slam_toolbox (maps, then localizes only once loop_patrol freezes the map) -> /map + TF map->odom -> Nav2 <- loop_patrol
 loop_patrol -> RPP desired_linear_vel + velocity_smoother max_accel (mapping profile, fast mode 10 s after the freeze)
