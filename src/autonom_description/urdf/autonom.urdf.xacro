@@ -19,7 +19,7 @@
   <xacro:property name="chassis_offset_x" value="-0.04"/>
   <xacro:property name="laser_x" value="0.0"/>
   <xacro:property name="laser_z" value="0.11"/>
-  <xacro:property name="laser_yaw" value="0.0"/>
+  <xacro:property name="laser_yaw" value="${pi}"/>  <!-- LiDAR mounted facing backwards -->
   <xacro:property name="imu_x" value="0.0"/>
   <xacro:property name="imu_z" value="0.05"/>
   <xacro:property name="chassis_mass" value="1.2"/>
