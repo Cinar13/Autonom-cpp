@@ -381,10 +381,17 @@ std::optional<Waypoint> planExplorationGoal(
   double best_value = -1.0;
   std::optional<std::size_t> best;
   for (std::size_t i = 0; i < reach.size(); ++i) {
-    if (steps[i] >= 0 && std::abs(reach[i] - target) <= 1 && clearance[i] > best_value) {
-      best_value = clearance[i];
-      best = i;
+    if (steps[i] < 0 || std::abs(reach[i] - target) > 1 || clearance[i] <= best_value) {
+      continue;
     }
+    // A goal closer than min_spacing in a straight line (a short detour can still have a long driving
+    // distance) lies inside Nav2's goal tolerance: it "succeeds" at once and the patrol resends it forever.
+    const Point p = grid.centre(static_cast<int>(i / grid.width), static_cast<int>(i % grid.width));
+    if (std::hypot(p.x - robot.x, p.y - robot.y) < settings.min_spacing) {
+      continue;
+    }
+    best_value = clearance[i];
+    best = i;
   }
   if (!best) {
     return std::nullopt;
