@@ -23,7 +23,7 @@ loop_patrol:
     race_speed: 0.6
     # Acceleration limits (velocity_smoother max_accel [x m/s^2, y, theta rad/s^2]): gentle while mapping, then
     # back to nav2.yaml's velocity_smoother values for the race.
-    exploration_max_accel: [0.8, 0.0, 3.0]
+    exploration_max_accel: [0.5, 0.0, 2.0]
     race_max_accel: [1.5, 0.0, 5.0]
     # Fast mode (race_speed, race_max_accel) starts this long (s) after the map is finished (the map freeze).
     race_speed_delay: 10.0
