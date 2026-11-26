@@ -52,6 +52,10 @@ motor_driver:
       kd: 0.0
       # Feed-forward ~ 1 / no-load speed at full duty: 1 / 31.42 rad/s (300 rpm). Tune on the robot.
       kf: 0.032
+      # Static friction: a small command (in-place turns start at ~0.5-1.5 rad/s per wheel) got only 2-5 % duty from
+      # kf, below what starts the N20 gearmotors, so the robot twitched in place instead of turning (2026-11-26).
+      # The bench needed > 10 % to start a wheel reliably. Tune on the robot (live: ros2 param set /motor_driver pid.ks).
+      ks: 0.12
       integral_limit: 0.2
       output_limit: 1.0
 

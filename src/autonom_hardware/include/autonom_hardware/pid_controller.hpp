@@ -14,6 +14,9 @@ struct PidGains
   double integral_limit{1.0};
   /// Symmetric output saturation.
   double output_limit{1.0};
+  /// Static-friction feed-forward: output added in the setpoint's direction whenever the setpoint is non-zero, so
+  /// small commands start the gearmotor instead of waiting for the integral to wind up against static friction.
+  double ks{0.0};
 };
 
 /// PID with feed-forward, derivative-on-measurement and conditional-integration anti-windup.

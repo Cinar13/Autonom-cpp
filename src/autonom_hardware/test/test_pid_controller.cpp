@@ -69,3 +69,13 @@ TEST(PidController, DirectionChangeClearsIntegral)
   // Reversing must not keep pushing forwards with the old integral.
   EXPECT_LE(pid.update(-5.0, 0.0, 0.02), 0.0);
 }
+
+TEST(PidController, StaticFrictionFeedForwardFollowsDirection)
+{
+  PidGains gains{0.0, 0.0, 0.0, 0.01, 1.0, 1.0};
+  gains.ks = 0.12;
+  PidController pid(gains);
+  EXPECT_NEAR(pid.update(1.0, 0.0, 0.0), 0.13, 1e-12);    // kf * 1 + ks
+  EXPECT_NEAR(pid.update(-1.0, 0.0, 0.0), -0.13, 1e-12);  // reverses with the command
+  EXPECT_DOUBLE_EQ(pid.update(0.0, 0.0, 0.0), 0.0);       // nothing when told to stop
+}

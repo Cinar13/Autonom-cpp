@@ -15,7 +15,9 @@ PidController::PidController(const PidGains & gains)
 
 void PidController::validate(const PidGains & gains)
 {
-  for (const double value : {gains.kp, gains.ki, gains.kd, gains.kf, gains.integral_limit, gains.output_limit}) {
+  for (const double value : {gains.kp, gains.ki, gains.kd, gains.kf, gains.integral_limit, gains.output_limit,
+      gains.ks})
+  {
     if (!std::isfinite(value) || value < 0.0) {
       throw std::invalid_argument("PID gains and limits must be finite and non-negative");
     }
@@ -41,7 +43,7 @@ void PidController::reset() noexcept
 
 double PidController::update(double setpoint, double measurement, double dt) noexcept
 {
-  const double feed_forward = gains_.kf * setpoint;
+  const double feed_forward = gains_.kf * setpoint + gains_.ks * ((setpoint > 0.0) - (setpoint < 0.0));
   if (!std::isfinite(setpoint) || !std::isfinite(measurement)) {
     reset();
     return 0.0;
