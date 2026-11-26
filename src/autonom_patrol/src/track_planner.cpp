@@ -14,14 +14,18 @@ namespace
 constexpr int kRowStep[4] = {1, -1, 0, 0};
 constexpr int kColStep[4] = {0, 0, 1, -1};
 
-Mask freeMask(const Grid & grid, int free_threshold)
+/// Cells that are not walls (free or unknown). Waypoint and goal clearance is measured from walls only: the
+/// unknown shadow the robot's own cables leave on its right-rear made the right side look narrower, so every
+/// exploration goal sat a few cm left of the corridor centre and the robot turned left at each goal.
+Mask notWallMask(const Grid & grid, int free_threshold)
 {
-  Mask free(grid.data.size(), 0);
-  for (std::size_t i = 0; i < free.size(); ++i) {
-    free[i] = grid.isFree(i, free_threshold) ? 1 : 0;
+  Mask mask(grid.data.size(), 0);
+  for (std::size_t i = 0; i < mask.size(); ++i) {
+    mask[i] = grid.data[i] < 0 || grid.isFree(i, free_threshold) ? 1 : 0;
   }
-  return free;
+  return mask;
 }
+
 
 /// "No obstacle" stand-in: large but finite, so the parabola arithmetic below stays well defined.
 constexpr double kFar = 1e20;
@@ -307,7 +311,7 @@ std::vector<Waypoint> planLoop(const Grid & grid, Point robot, double heading, c
     return {};
   }
 
-  const auto wall_distance = distanceTransform(freeMask(grid, settings.free_threshold), grid.width, grid.height);
+  const auto wall_distance = distanceTransform(notWallMask(grid, settings.free_threshold), grid.width, grid.height);
   const int spacing_steps = std::max(2, static_cast<int>(std::lround(settings.waypoint_spacing / res)));
   std::vector<Point> points;
   for (int level = spacing_steps; level <= lap_steps - spacing_steps / 2; level += spacing_steps) {
@@ -399,7 +403,7 @@ std::optional<Waypoint> planExplorationGoal(
   if (settings.max_exploration_distance > 0.0) {
     target = std::min(target, static_cast<int>(std::lround(settings.max_exploration_distance / res)));
   }
-  const auto clearance = distanceTransform(freeMask(grid, settings.free_threshold), grid.width, grid.height);
+  const auto clearance = distanceTransform(notWallMask(grid, settings.free_threshold), grid.width, grid.height);
   double best_value = -1.0;
   std::optional<std::size_t> best;
   for (std::size_t i = 0; i < reach.size(); ++i) {

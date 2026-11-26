@@ -251,6 +251,25 @@ TEST(TrackPlanner, ExplorationGoalPrefersCellsAheadOfRobot)
   EXPECT_GT(facing_corner->x, 1.0);
 }
 
+TEST(TrackPlanner, ExplorationGoalIgnoresShadowBesideTheRobot)
+{
+  // 0.5 m corridor with occupied walls along +x; an unknown shadow band on the right (the cables' shadow) must not
+  // push the goal off the centre line (it used to sit ~4 cm left at every goal, so the robot turned left).
+  Grid g = makeGrid(200, 200, -1);
+  fill(g, 95, 105, 60, 160, 0);     // free corridor, rows 95..104 (centre line y = 0)
+  fill(g, 94, 95, 60, 160, 100);    // right wall
+  fill(g, 105, 106, 60, 160, 100);  // left wall
+  fill(g, 95, 98, 96, 130, -1);     // 15 cm shadow band along the right wall, from the robot to past the goal
+  LoopSettings s;
+  s.clearance = 0.13;
+  s.min_spacing = 0.3;
+  s.max_exploration_distance = 0.6;
+  const auto goal = planExplorationGoal(g, {0.0, 0.0}, s, 0.0);
+  ASSERT_TRUE(goal);
+  EXPECT_GT(goal->x, 0.3);
+  EXPECT_NEAR(goal->y, 0.0, 0.03);
+}
+
 TEST(TrackPlanner, ExplorationDistanceCap)
 {
   Grid g = makeGrid(200, 200, -1);
