@@ -93,8 +93,8 @@ loop runs away.
 1. **Encoders, motors unpowered.** Standing behind the robot, turn one wheel one turn forward by hand. That
    wheel's joint in `/joint_states` must change by about +2π (+6.28 rad) and the other joint must not change.
    The wrong joint moves: the pin pairs are swapped. It moves by −2π: flip that encoder's `inverted`.
-2. **One motor at a time, closed loop.** Cancel one wheel with the turn rate: `v = 0.05`, `w = ±v / (b/2) = ±0.588`
-   (b = 0.17 m) gives one wheel 2v/r = 3.08 rad/s and the other 0. Expect a steady speed near the target. If it
+2. **One motor at a time, closed loop.** Cancel one wheel with the turn rate: `v = 0.05`, `w = ±v / (b/2) = ±0.714`
+   (b = 0.14 m) gives one wheel 2v/r = 3.08 rad/s and the other 0. Expect a steady speed near the target. If it
    races to full speed, the motor and encoder signs disagree; with the encoder already passing step 1, flip that
    motor's `inverted`. Stop as soon as a wheel goes above ~10 rad/s: a runaway at full duty browned out the Pi twice.
 3. **Only one driver process.** Two leftover `motor_driver` instances fighting over the same pins give
@@ -165,8 +165,8 @@ scripts/start_sim.sh robot:=tb3_fast --speed 1.2 --controller mppi --planner nav
 
 - The simulated LiDAR matches the RPLiDAR S3 (3200 samples/rev at 10 Hz, 0.1125°, 0.05–40 m) and the wheel
   odometry counts at the real encoder resolution (1400 counts/rev), so `slam_toolbox.yaml` and the EKF are shared.
-- Gazebo DiffDrive's TF is bridged to `/sim/tf`, not `/tf`; the sim IMU goes through the same covariance relay as
-  the BNO055 driver's values.
+- Gazebo DiffDrive's TF is bridged to `/sim/tf`, not `/tf`; the sim IMU goes through a covariance relay with the
+  same variances the real IMU publishes.
 - `robot_sim/config` only layers TurtleBot3 differences on the robot's `autonom_bringup/config`.
 
 ## Nav2 modes
@@ -187,11 +187,14 @@ The theoretical best lap (optimal racing line at the robot's limits) is ~5.3 s: 
 
 ## Bring-up checklist (real robot)
 
-1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` (1400) in `autonom_hardware/config/hardware.yaml`.
-2. With wheels off the ground, check `/joint_states` velocities are positive when driving forward; fix with `*.inverted`.
-3. Tune `pid.kf` first (effort per rad/s, ~1 / 31.42), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
-4. Check the LiDAR yaw (`laser_yaw` in the URDF) so the scan lines up with the robot's front in RViz.
-5. Check the BNO055 gyro before fusing it (`docs/07_imu_gyro.md`).
+1. Verify the wiring against the [pinout](#pinout-raspberry-pi-5), the `pwm_chip` index (`ls /sys/class/pwm`) and `ticks_per_revolution` (1400) in `autonom_hardware/config/hardware.yaml`. The real robot's motor channels and encoder pairs are crossed relative to the original schematic; `hardware.yaml` holds the real mapping.
+2. With wheels off the ground, check `/joint_states` velocities are positive when driving forward; fix with `*.inverted` (see the motor and encoder check above).
+3. Tune `pid.kf` first (effort per rad/s, ~1 / 31.42), then `pid.ks` (static friction, so slow turns start the gearmotors), then `pid.kp` / `pid.ki` live: `ros2 param set /motor_driver pid.kp 0.05`.
+4. Geometry must match the robot (measured 2026-11-26, `docs/01_hardware_specs.md`): `wheel_separation` 0.14, LiDAR `laser_x` 0.08 / `laser_yaw` pi in the URDF, the rectangular footprint in `nav2.yaml`.
+5. IMU: `i2cdetect -y -r 1` must show `4b` (BNO08x). Turn the robot left by hand: `/imu/data` `angular_velocity.z` must be positive.
+6. LiDAR: `/dev/ttyUSB0` must exist (`lsusb` shows the CP210x). `sllidar_node` error `80008004` means it does not answer: check the USB cable and its power.
+7. Start the robot stack first and wait for `Managed nodes are active` before starting RViz on the base station; starting both together broke Nav2's lifecycle start-up twice (Fast DDS `RTPS_READER_HISTORY` errors).
+8. The start button is a latching switch: switch it off, then on. While it reads "pressed" at start-up the race does not start.
 
 ## Docs
 
@@ -199,7 +202,7 @@ The theoretical best lap (optimal racing line at the robot's limits) is ~5.3 s: 
 |---|---|
 | `docs/01`–`05` | Hardware, software architecture, network, git workflow, simulation |
 | `docs/06_competition_rules.md` | Start delay, wall contact, lap scoring |
-| `docs/07_imu_gyro.md` | BNO055 gyro specs and checks |
+| `docs/07_imu_gyro.md` | IMU gyro checks (written for the BNO055; the fitted IMU is a BNO08x, see `docs/01`) |
 | `docs/HANDOFF.md` | Current state, decisions to keep, open issues |
 | `docs/REPORT.md` | Race results and to-do list |
 | `docs/SESSION_*.md` | Per-session measurements and changes |

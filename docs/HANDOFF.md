@@ -2,6 +2,59 @@
 
 Written 2026-11-07 at the end of the WSL2 session. Branch `not_tested`, last code commit `c08701b`.
 Nothing here has run on real hardware. The simulation has run, but a full lap was never observed to succeed.
+**Update 2026-11-26:** first bring-up on the real robot. Read section 0 first; sections 1-7 are the 2026-11-07 state.
+
+## 0. Real robot bring-up, 2026-11-26
+
+First day on the Raspberry Pi 5 robot. The full stack (`scripts/real_robot.sh --imu`) starts and runs; a full lap on
+the track has **not** been completed yet. Commits `beb5e34`..`9cf9d36` on `not_tested`.
+
+### Verified on the robot
+| Item | Result |
+|---|---|
+| Wiring | Both TB6612 channels **and** both encoder pairs are crossed vs. the schematic (open-loop channel test, hand-turn encoder test). Real mapping in `hardware.yaml`, `docs/01` |
+| Wheels | Each wheel tracks its own closed-loop target; both at 75 % (23.6 rad/s) within +-0.2 rad/s |
+| Geometry | Measured: wheels 14 cm apart (config had 17), body 19 x 17.5 cm with the axle 6.5 cm from the back, LiDAR 8 cm ahead of the axle. Now in the URDF, `hardware.yaml` and a rectangular Nav2 footprint (`9cf9d36`) |
+| LiDAR angle | `laser_yaw = pi` is right: a forward push reads +x in rf2o; turning left reads + in IMU, rf2o and EKF |
+| IMU | Sold as a BNO055, actually a **BNO08x at 0x4B** (SH-2, fw 2.6.6). `bno08x_ros2_driver` failed (CEVA's library waits for an advertisement this chip never sends), so `autonom_hardware` has its own SHTP driver `bno08x_node` (`3748845`): ~100 Hz, gravity 9.84-9.88, single initialisation |
+
+### Fixes made on the robot (all on `not_tested`)
+| Commit | Problem seen | Fix |
+|---|---|---|
+| `b812cdc` | Cables 5-11 cm from the LiDAR were obstacles inside the footprint: every move "collision ahead" | Costmaps and SLAM ignore returns < 0.16 m |
+| `5f04774` | Patrol goal 0.21 m away, inside Nav2's 0.2 m goal tolerance: "reached" 10x/s, robot never moved | Exploration goals >= `min_spacing` (0.3 m) in a straight line |
+| `2fb1e0b` | Shadow (unknown) cells around the robot padded like walls closed the 0.5 m start corridor: no goal | Only a 1-cell margin from unknown cells |
+| `bef2549` | Goals ~4.5 cm left of the corridor centre (shadow on the right): a small left turn at every goal | Goal/waypoint clearance measured from walls only |
+| `48754e6` | Wheels buzzed back and forth while Nav2 braked | Integral cleared on direction change, `ki` 0.15, `integral_limit` 0.2, `stop_velocity_threshold` 0.5 |
+| `5934bd5` | Robot twitched in place instead of turning (RPP ramps from the measured speed: 2-5 % duty) | Static-friction feed-forward `pid.ks` 0.12 (**not yet tried on the robot**) |
+| `2543529` | Mapping too slow (user) | `exploration_speed` 0.45 m/s (**not yet tried with the other fixes**) |
+| `9cf9d36` | Wedged in the 4th hairpin; every recovery "Collision Ahead" | Real geometry + rectangular footprint (see above) |
+
+### State of the Pi at the end of the day (not a clean checkout)
+On user request the Pi runs the **14:15 code** (`3748845`: wiring, own IMU driver) **plus** the three patrol fixes
+(`track_planner.cpp` from `bef2549`), the cable filter (`nav2.yaml`, `slam_toolbox.yaml`), the URDF geometry and
+`wheel_separation` 0.14. It still has the **original wheel PID and gains and the 0.3 m/s mapping speed**. Files were
+copied by hand; replaced files are kept as `*.~N~`. `git pull` (after discarding those edits) brings it to the full latest.
+
+### Operating notes
+- **Start order:** robot stack first, wait for `Managed nodes are active`, then RViz on the base station. Starting both
+  together twice left Nav2 unable to activate (Fast DDS `RTPS_READER_HISTORY` errors in `lifecycle_manager`, although
+  both sides are meant to run CycloneDDS: check `RMW_IMPLEMENTATION` on the Pi). Do not run `ros2 lifecycle`/service calls from the base station during start-up.
+- **Start button** is latching: switch off, then on. "Start button reads pressed" at start-up means it is still on.
+- **LiDAR** `80008004` = not answering. Seen right after a restart and when `/dev/ttyUSB0` had disappeared (USB/power).
+  The launch does not respawn `sllidar_node`; respawn would make a failed connect retry (proposed, not done).
+- **Brownouts:** the Pi rebooted on its own when motors stalled at full duty (runaway test, wedged in a corner).
+- **RViz on the base station** segfaults now and then (GLSL `indexed_8bit_image` error); just restart it.
+- **Fan:** `/boot/firmware/config.txt` has `dtparam=fan_temp0=40000` and `fan_temp1=50000` (steps at 40 / 50 C);
+  backup `config.txt.bak-fan`. User `pi5` is in group `i2c`.
+- Logs of the last run: `~/run_logs/2026-11-26/` on the Pi.
+
+### Open on the robot (prioritised)
+1. A full lap: the robot reached the 4th hairpin once (before the geometry fix); retest with `9cf9d36` on the Pi.
+2. Try the wheel PID changes (`48754e6`, `5934bd5`) on the robot; tune `pid.ks`.
+3. Robot cables shadow the LiDAR (5-11 cm, rear): move them out of the scan plane.
+4. `sllidar_node` respawn; separate supply for the Pi.
+5. `docs/07_imu_gyro.md` still describes the BNO055.
 
 ---
 
@@ -146,7 +199,7 @@ For `use_rf2o:=true`, confirm `ros2 param get /ekf_filter_node odom1` returns `/
 2. **`loop_patrol.py` uses 60–100 % of a core.** (TF now has its own thread; `/clock` still lands on the patrol node.) It is a Python process with two nodes handling `/clock` (1 kHz) and `/tf`. Options: move the BasicNavigator and the planner into one node, or port the patrol to C++ (the planner is already a pure, tested module).
 3. **Rendering issue reported in WSL** (Gazebo + RViz, d3d12 driver). No cause found in the logs. Re-check on native (test 8).
 4. **rf2o is off by default in simulation** at the user's request, for CPU. With the decimator it measured ~38 % of a core. Re-enable (`use_rf2o:=true`) once the machine has headroom, because the real robot runs with it on.
-5. **Real hardware is entirely untested.** Before the first run on the Pi:
+5. **Real hardware is entirely untested.** *(Done 2026-11-26, see section 0; kept for history.)* Before the first run on the Pi:
    - Placeholder values in `autonom_hardware/config/hardware.yaml`: pins, `pwm_chip` index (`ls /sys/class/pwm`), `ticks_per_revolution`, `*.inverted`, PID gains.
    - `dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4` in `/boot/firmware/config.txt`.
    - Permissions for `/dev/gpiochip*` and `/sys/class/pwm`.
@@ -181,6 +234,10 @@ Harmless log noise you can ignore: rf2o `Waiting for laser_scans....` (it loops 
 | Loop patrol drives to the map frontier when no loop fits | Without it, the robot never moved when the visible map was small |
 | Nav2 uses Regulated Pure Pursuit, not MPPI; own `navigation.launch.py` without docking | Saves CPU on the Pi; Jazzy's stock launch needs docking config. Since 2026-11-09 `controller:=mppi` (RPP maps, MPPI races) is an option: fastest in the sim at 0.6 m/s, CPU on the Pi untested |
 | libgpiod **1.6** API (not 2.x) | Ubuntu 24.04 ships 1.6.3; CMake fails fast on 2.x |
+| Own BNO08x driver (`bno08x_node`), no CEVA SH-2 library (2026-11-26) | The library waits for an SHTP advertisement the robot's chip never sends; the chip also sends no Get Feature Response, so a gyro watchdog replaces that confirmation |
+| Rectangular Nav2 footprint + 20 mm padding instead of `robot_radius` (2026-11-26) | The robot is 19 x 17.5 cm with the axle near the back; a circle (r 0.153) wasted the 0.5 m corridor width in hairpins |
+| Patrol clearance from walls only; unknown cells never entered, 1-cell margin (2026-11-26) | LiDAR shadows of the robot's own cables otherwise boxed the robot in and biased goals to one side |
+| Costmaps and SLAM ignore LiDAR returns < 0.16 m (2026-11-26) | The robot's cables sit 5-11 cm from the LiDAR |
 
 ---
 
