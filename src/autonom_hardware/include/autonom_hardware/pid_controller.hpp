@@ -35,6 +35,7 @@ private:
   double integral_{0.0};
   double previous_measurement_{0.0};
   bool has_previous_measurement_{false};
+  int previous_setpoint_sign_{0};
 };
 
 }  // namespace autonom_hardware

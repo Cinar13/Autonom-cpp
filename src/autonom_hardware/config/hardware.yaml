@@ -22,7 +22,9 @@ motor_driver:
     control_frequency_hz: 50.0
     # Motor limit: N20 6 V, 300 rpm at the 1:50 gearbox output = 31.42 rad/s (1.02 m/s on the 0.0325 m wheels).
     max_wheel_speed: 31.42
-    stop_velocity_threshold: 0.05
+    # Below this (rad/s, both wheels) the motors coast instead of fighting the gearmotors' static friction, which
+    # made the wheels buzz back and forth while Nav2 braked (2026-11-26). Nav2's slowest normal speeds are >= 1.5.
+    stop_velocity_threshold: 0.5
     cmd_vel_timeout: 0.5
     feedback_timeout: 0.25
     standby_pin: 26
@@ -44,11 +46,13 @@ motor_driver:
       inverted: false
     pid:
       kp: 0.04
-      ki: 0.4
+      # Small integral, tightly bounded: at low speed it wound up against static friction and overshot (bench test
+      # 2026-11-26: 10.8 rad/s spike for a 3 rad/s target, then reversal).
+      ki: 0.15
       kd: 0.0
       # Feed-forward ~ 1 / no-load speed at full duty: 1 / 31.42 rad/s (300 rpm). Tune on the robot.
       kf: 0.032
-      integral_limit: 0.5
+      integral_limit: 0.2
       output_limit: 1.0
 
 wheel_odometry:

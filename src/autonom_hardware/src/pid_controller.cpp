@@ -36,6 +36,7 @@ void PidController::reset() noexcept
 {
   integral_ = 0.0;
   has_previous_measurement_ = false;
+  previous_setpoint_sign_ = 0;
 }
 
 double PidController::update(double setpoint, double measurement, double dt) noexcept
@@ -47,6 +48,14 @@ double PidController::update(double setpoint, double measurement, double dt) noe
   }
   if (!std::isfinite(dt) || dt <= 0.0) {
     return std::clamp(feed_forward, -gains_.output_limit, gains_.output_limit);
+  }
+
+  // A direction change makes the wound-up integral push the wrong way: on the robot the wheels then overshot
+  // and reversed again and again ("motors go back and forth really fast") while Nav2 braked and re-accelerated.
+  const int setpoint_sign = (setpoint > 0.0) - (setpoint < 0.0);
+  if (setpoint_sign != previous_setpoint_sign_) {
+    integral_ = 0.0;
+    previous_setpoint_sign_ = setpoint_sign;
   }
 
   const double error = setpoint - measurement;
