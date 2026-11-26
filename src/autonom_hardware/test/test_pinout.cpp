@@ -38,13 +38,13 @@ struct Connection
 
 // The wiring schematic (Raspberry Pi 5 side).
 const std::vector<Connection> kSchematic{
-  {"TB6612 PWMA (left motor)", 12, 32},
-  {"TB6612 AIN1 (left motor)", 5, 29},
-  {"TB6612 AIN2 (left motor)", 6, 31},
+  {"TB6612 PWMA (right motor)", 12, 32},
+  {"TB6612 AIN1 (right motor)", 5, 29},
+  {"TB6612 AIN2 (right motor)", 6, 31},
   {"TB6612 STBY", 26, 37},
-  {"TB6612 BIN1 (right motor)", 20, 38},
-  {"TB6612 BIN2 (right motor)", 21, 40},
-  {"TB6612 PWMB (right motor)", 13, 33},
+  {"TB6612 BIN1 (left motor)", 20, 38},
+  {"TB6612 BIN2 (left motor)", 21, 40},
+  {"TB6612 PWMB (left motor)", 13, 33},
   {"Left encoder A", 23, 16},
   {"Left encoder B", 24, 18},
   {"Right encoder A", 17, 11},
@@ -108,8 +108,8 @@ TEST(Pinout, EveryGpioIsUsedOnce)
 TEST(Pinout, MotorPwmPinsAreHardwarePwmChannels)
 {
   const auto motor = hardwareYaml()["motor_driver"]["ros__parameters"];
-  const int left_gpio = gpioOf("TB6612 PWMA (left motor)");
-  const int right_gpio = gpioOf("TB6612 PWMB (right motor)");
+  const int left_gpio = gpioOf("TB6612 PWMB (left motor)");
+  const int right_gpio = gpioOf("TB6612 PWMA (right motor)");
   ASSERT_TRUE(kPwm0ChannelOfGpio.count(left_gpio));
   ASSERT_TRUE(kPwm0ChannelOfGpio.count(right_gpio));
   EXPECT_EQ(motor["left_motor"]["pwm_channel"].as<int>(), kPwm0ChannelOfGpio.at(left_gpio));
@@ -117,12 +117,13 @@ TEST(Pinout, MotorPwmPinsAreHardwarePwmChannels)
   EXPECT_EQ(motor["left_motor"]["pwm_chip"].as<std::string>(), motor["right_motor"]["pwm_chip"].as<std::string>())
     << "both channels are on RP1 PWM0";
 
-  // The config.txt overlay documented in hardware.yaml must route exactly these two GPIOs to PWM0.
+  // The config.txt overlay documented in hardware.yaml must route exactly these two GPIOs to PWM0
+  // (channel A's PWMA first, then channel B's PWMB).
   const std::string yaml = readFile(HARDWARE_YAML);
   std::smatch overlay;
   ASSERT_TRUE(std::regex_search(yaml, overlay, std::regex(R"(dtoverlay=pwm-2chan,pin=(\d+),func=4,pin2=(\d+),func2=4)")));
-  EXPECT_EQ(std::stoi(overlay[1]), left_gpio);
-  EXPECT_EQ(std::stoi(overlay[2]), right_gpio);
+  EXPECT_EQ(std::stoi(overlay[1]), right_gpio);
+  EXPECT_EQ(std::stoi(overlay[2]), left_gpio);
 }
 
 TEST(Pinout, HardwareYamlMatchesTheSchematic)
@@ -132,10 +133,10 @@ TEST(Pinout, HardwareYamlMatchesTheSchematic)
 
   const auto motor = yaml["motor_driver"]["ros__parameters"];
   EXPECT_EQ(motor["standby_pin"].as<int>(), gpioOf("TB6612 STBY"));
-  EXPECT_EQ(motor["left_motor"]["in1_pin"].as<int>(), gpioOf("TB6612 AIN1 (left motor)"));
-  EXPECT_EQ(motor["left_motor"]["in2_pin"].as<int>(), gpioOf("TB6612 AIN2 (left motor)"));
-  EXPECT_EQ(motor["right_motor"]["in1_pin"].as<int>(), gpioOf("TB6612 BIN1 (right motor)"));
-  EXPECT_EQ(motor["right_motor"]["in2_pin"].as<int>(), gpioOf("TB6612 BIN2 (right motor)"));
+  EXPECT_EQ(motor["left_motor"]["in1_pin"].as<int>(), gpioOf("TB6612 BIN1 (left motor)"));
+  EXPECT_EQ(motor["left_motor"]["in2_pin"].as<int>(), gpioOf("TB6612 BIN2 (left motor)"));
+  EXPECT_EQ(motor["right_motor"]["in1_pin"].as<int>(), gpioOf("TB6612 AIN1 (right motor)"));
+  EXPECT_EQ(motor["right_motor"]["in2_pin"].as<int>(), gpioOf("TB6612 AIN2 (right motor)"));
 
   const auto odometry = yaml["wheel_odometry"]["ros__parameters"];
   EXPECT_EQ(odometry["left_encoder"]["pin_a"].as<int>(), gpioOf("Left encoder A"));

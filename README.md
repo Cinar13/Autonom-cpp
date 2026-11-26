@@ -59,16 +59,16 @@ dtoverlay=pwm-2chan,pin=12,func=4,pin2=13,func2=4
 ### Pinout (Raspberry Pi 5)
 
 BCM GPIO numbers, as used in `autonom_hardware/config/hardware.yaml`, following the wiring schematic: a
-TB6612FNG drives both motors (VM from the 6 V buck regulator, VCC from the Pi's 3.3 V), channel A the left
-motor and channel B the right. The encoder pairs are wired crossed with respect to the original schematic
-(verified on the robot 2026-11-26); the table shows the real wiring.
+TB6612FNG drives both motors (VM from the 6 V buck regulator, VCC from the Pi's 3.3 V), channel B the left
+motor and channel A the right. Both the motor channels and the encoder pairs are wired crossed with respect to
+the original schematic (verified on the robot 2026-11-26); the table shows the real wiring.
 
 | Function | BCM GPIO | Header pin | Parameter |
 |---|---|---|---|
-| Left motor PWMA (PWM0 ch 0) | 12 | 32 | `left_motor.pwm_channel: 0` |
-| Left motor AIN1 / AIN2 | 5 / 6 | 29 / 31 | `left_motor.in1_pin` / `in2_pin` |
-| Right motor PWMB (PWM0 ch 1) | 13 | 33 | `right_motor.pwm_channel: 1` |
-| Right motor BIN1 / BIN2 | 20 / 21 | 38 / 40 | `right_motor.in1_pin` / `in2_pin` |
+| Left motor PWMB (PWM0 ch 1) | 13 | 33 | `left_motor.pwm_channel: 1` |
+| Left motor BIN1 / BIN2 | 20 / 21 | 38 / 40 | `left_motor.in1_pin` / `in2_pin` |
+| Right motor PWMA (PWM0 ch 0) | 12 | 32 | `right_motor.pwm_channel: 0` |
+| Right motor AIN1 / AIN2 | 5 / 6 | 29 / 31 | `right_motor.in1_pin` / `in2_pin` |
 | TB6612 STBY (high = enabled) | 26 | 37 | `standby_pin` |
 | Start button (other side to GND) | 16 | 36 | `start_button.pin` |
 | Left encoder A / B | 23 / 24 | 16 / 18 | `left_encoder.pin_a` / `pin_b` |
@@ -84,9 +84,10 @@ start-up before a press counts, so a stuck or shorted button can never start the
 ### Checking encoders and motors (any new build, wheels off the ground)
 
 Sign convention: a positive wheel velocity means that wheel rolls the robot forward. Each side meets it on its
-own through two independent flags: the right motor and the left encoder are mirror-mounted, so
-`right_motor.inverted` and `left_encoder.inverted` are `true`. The sign belongs to the encoder, not to the side:
-if the pairs are ever re-wired, each pair keeps its own `inverted`. Get each flag right on its own, or the speed
+own through two independent flags, `<side>_motor.inverted` and `<side>_encoder.inverted`. With the current
+wiring only `left_encoder.inverted` is `true`; both motors are `false` (IN1 high = forward on both sides). The
+sign belongs to the encoder and to the motor lead wiring, not to the side: if pairs are ever re-wired, re-check
+them. Get each flag right on its own, or the speed
 loop runs away.
 
 1. **Encoders, motors unpowered.** Standing behind the robot, turn one wheel one turn forward by hand. That

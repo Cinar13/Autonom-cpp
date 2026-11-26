@@ -55,8 +55,8 @@ MotorDriverNode::MotorDriverNode(const rclcpp::NodeOptions & options)
   // TB6612FNG pinout (BCM): PWMA GPIO12 (PWM0 ch 0), AIN1 GPIO5, AIN2 GPIO6; PWMB GPIO13 (PWM0 ch 1),
   // BIN1 GPIO20, BIN2 GPIO21; STBY GPIO26. Channel A drives the left motor, B the right.
   const auto standby_pin = declareStandbyPin(*this, 26);
-  const Tb6612Config left_config = declareTb6612Config(*this, "left_motor", 0, 5, 6);
-  const Tb6612Config right_config = declareTb6612Config(*this, "right_motor", 1, 20, 21);
+  const Tb6612Config left_config = declareTb6612Config(*this, "left_motor", 1, 20, 21);
+  const Tb6612Config right_config = declareTb6612Config(*this, "right_motor", 0, 5, 6);
   try {
     const GpioChipPtr chip = openGpioChip(gpio_chip);
     // STBY stays low (both channels off) until the control loop first drives the motors.

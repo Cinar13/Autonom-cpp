@@ -31,10 +31,11 @@ namespace
 {
 
 // The wiring schematic (BCM numbers).
-constexpr unsigned int kAin1 = 5, kAin2 = 6, kBin1 = 20, kBin2 = 21, kStby = 26;
+// TB6612 channel B drives the left wheel, channel A the right (real wiring, crossed vs. the original schematic).
+constexpr unsigned int kLeftIn1 = 20, kLeftIn2 = 21, kRightIn1 = 5, kRightIn2 = 6, kStby = 26;
 constexpr unsigned int kLeftEncA = 23, kLeftEncB = 24, kRightEncA = 17, kRightEncB = 27;
 constexpr unsigned int kStartButton = 16;
-constexpr unsigned int kPwmLeft = 0, kPwmRight = 1;  // GPIO12 / GPIO13 via dtoverlay=pwm-2chan
+constexpr unsigned int kPwmLeft = 1, kPwmRight = 0;  // GPIO13 / GPIO12 via dtoverlay=pwm-2chan
 
 int level(unsigned int offset) { return fake_gpiod::line(offset).value; }
 
@@ -116,14 +117,14 @@ TEST_F(HardwareNodesTest, AllNodesShareOneProcessWithTheSchematicPinout)
   auto motors = make<autonom_hardware::MotorDriverNode>();
   auto button = make<autonom_hardware::StartButtonNode>();
 
-  for (unsigned int pin : {kAin1, kAin2, kBin1, kBin2, kStby}) {
+  for (unsigned int pin : {kRightIn1, kRightIn2, kLeftIn1, kLeftIn2, kStby}) {
     EXPECT_EQ(fake_gpiod::line(pin).mode, Mode::kOutput) << "GPIO" << pin;
     EXPECT_EQ(level(pin), 0) << "GPIO" << pin << " must start low (motors off, TB6612 in standby)";
   }
-  EXPECT_EQ(fake_gpiod::line(kAin1).consumer, "autonom_left_motor_in1");
-  EXPECT_EQ(fake_gpiod::line(kAin2).consumer, "autonom_left_motor_in2");
-  EXPECT_EQ(fake_gpiod::line(kBin1).consumer, "autonom_right_motor_in1");
-  EXPECT_EQ(fake_gpiod::line(kBin2).consumer, "autonom_right_motor_in2");
+  EXPECT_EQ(fake_gpiod::line(kRightIn1).consumer, "autonom_right_motor_in1");
+  EXPECT_EQ(fake_gpiod::line(kRightIn2).consumer, "autonom_right_motor_in2");
+  EXPECT_EQ(fake_gpiod::line(kLeftIn1).consumer, "autonom_left_motor_in1");
+  EXPECT_EQ(fake_gpiod::line(kLeftIn2).consumer, "autonom_left_motor_in2");
   EXPECT_EQ(fake_gpiod::line(kStby).consumer, "autonom_motor_standby");
   for (unsigned int pin : {kLeftEncA, kLeftEncB, kRightEncA, kRightEncB}) {
     EXPECT_EQ(fake_gpiod::line(pin).mode, Mode::kEdgeEvents) << "GPIO" << pin;
@@ -160,8 +161,8 @@ TEST_F(HardwareNodesTest, CodeDefaultsMatchTheSchematicWithoutTheParamsFile)
   autonom_hardware::StartButtonNode button(bare);
 
   const std::map<unsigned int, std::string> expected{
-    {kAin1, "autonom_left_motor_in1"}, {kAin2, "autonom_left_motor_in2"},
-    {kBin1, "autonom_right_motor_in1"}, {kBin2, "autonom_right_motor_in2"},
+    {kRightIn1, "autonom_right_motor_in1"}, {kRightIn2, "autonom_right_motor_in2"},
+    {kLeftIn1, "autonom_left_motor_in1"}, {kLeftIn2, "autonom_left_motor_in2"},
     {kStby, "autonom_motor_standby"},
     {kLeftEncA, "autonom_left_encoder"}, {kLeftEncB, "autonom_left_encoder"},
     {kRightEncA, "autonom_right_encoder"}, {kRightEncB, "autonom_right_encoder"},
@@ -231,11 +232,11 @@ TEST_F(MotorDriverTest, ForwardEnablesTheBridgeAndDrivesBothWheelsForward)
 {
   drive(0.2, 0.0);
   EXPECT_EQ(level(kStby), 1);
-  EXPECT_EQ(level(kAin1), 1);
-  EXPECT_EQ(level(kAin2), 0);
-  // right_motor.inverted: true (mirror-mounted), so its forward is BIN2.
-  EXPECT_EQ(level(kBin1), 0);
-  EXPECT_EQ(level(kBin2), 1);
+  // Neither motor is inverted with the real wiring: IN1 high is forward on both sides.
+  EXPECT_EQ(level(kLeftIn1), 1);
+  EXPECT_EQ(level(kLeftIn2), 0);
+  EXPECT_EQ(level(kRightIn1), 1);
+  EXPECT_EQ(level(kRightIn2), 0);
   EXPECT_GT(duty(kPwmLeft), 0);
   EXPECT_GT(duty(kPwmRight), 0);
 }
@@ -244,10 +245,10 @@ TEST_F(MotorDriverTest, TurningInPlaceDrivesTheWheelsOppositeWays)
 {
   drive(0.0, 2.0);
   EXPECT_EQ(level(kStby), 1);
-  EXPECT_EQ(level(kAin1), 0);  // left backwards
-  EXPECT_EQ(level(kAin2), 1);
-  EXPECT_EQ(level(kBin1), 0);  // right forwards (inverted -> BIN2)
-  EXPECT_EQ(level(kBin2), 1);
+  EXPECT_EQ(level(kLeftIn1), 0);  // left backwards
+  EXPECT_EQ(level(kLeftIn2), 1);
+  EXPECT_EQ(level(kRightIn1), 1);  // right forwards
+  EXPECT_EQ(level(kRightIn2), 0);
 }
 
 TEST_F(MotorDriverTest, CmdVelTimeoutStopsEverythingAndEntersStandby)
@@ -256,7 +257,7 @@ TEST_F(MotorDriverTest, CmdVelTimeoutStopsEverythingAndEntersStandby)
   ASSERT_EQ(level(kStby), 1);
   spinFor(700ms);  // cmd_vel_timeout is 0.5 s
   EXPECT_EQ(level(kStby), 0);
-  for (unsigned int pin : {kAin1, kAin2, kBin1, kBin2}) {
+  for (unsigned int pin : {kRightIn1, kRightIn2, kLeftIn1, kLeftIn2}) {
     EXPECT_EQ(level(pin), 0) << "GPIO" << pin;
   }
   EXPECT_EQ(duty(kPwmLeft), 0);
@@ -298,7 +299,7 @@ TEST_F(MotorDriverTest, ShutdownReleasesEverythingLowAndDisablesPwm)
   ASSERT_EQ(level(kStby), 1);
   executor_->remove_node(motors_);
   motors_.reset();
-  for (unsigned int pin : {kAin1, kAin2, kBin1, kBin2, kStby}) {
+  for (unsigned int pin : {kRightIn1, kRightIn2, kLeftIn1, kLeftIn2, kStby}) {
     EXPECT_EQ(fake_gpiod::line(pin).mode, Mode::kFree) << "GPIO" << pin;
     EXPECT_EQ(level(pin), 0) << "GPIO" << pin;
   }
