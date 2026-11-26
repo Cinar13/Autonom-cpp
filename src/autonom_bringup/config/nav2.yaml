@@ -111,9 +111,10 @@ local_costmap:
           marking: true
           data_type: "LaserScan"
           raytrace_max_range: 4.0
-          raytrace_min_range: 0.0
+          # Returns inside the robot (its own cables, mounts: 5-11 cm on the real robot) are not obstacles.
+          raytrace_min_range: 0.16
           obstacle_max_range: 3.5
-          obstacle_min_range: 0.0
+          obstacle_min_range: 0.16
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
@@ -160,9 +161,10 @@ global_costmap:
           # Longer than the local costmap: walls and robots further down the track enter the plan early, and
           # rays clear a departed robot from further away.
           raytrace_max_range: 9.0
-          raytrace_min_range: 0.0
+          # Returns inside the robot (its own cables, mounts: 5-11 cm on the real robot) are not obstacles.
+          raytrace_min_range: 0.16
           obstacle_max_range: 8.0
-          obstacle_min_range: 0.0
+          obstacle_min_range: 0.16
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
