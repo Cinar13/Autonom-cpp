@@ -3,14 +3,14 @@
 
   <!-- sim:=true adds the Gazebo Harmonic systems so this model can replace the TurtleBot3 placeholder. -->
   <xacro:arg name="sim" default="false"/>
-  <!-- Gazebo DiffDrive limits (sim only). The N20 motors allow 300 rpm = 31.42 rad/s x 0.0325 m = 1.02 m/s, so the speed
-       cap never goes above that; fibonacci_simulation.launch.py may raise the turn rate and acceleration. -->
+  <!-- Gazebo DiffDrive limits (sim only). The N20 motors allow 300 rpm = 31.42 rad/s; the real 0.016 m wheels make that 0.50 m/s
+       (this sim cap still uses the old 0.0325 m value, 1.02 m/s); fibonacci_simulation.launch.py may raise the turn rate and acceleration. -->
   <xacro:arg name="gz_max_velocity" default="1.02"/>
   <xacro:arg name="gz_max_angular_velocity" default="3.0"/>
   <xacro:arg name="gz_max_acceleration" default="1.0"/>
 
   <!-- Keep wheel_radius / wheel_separation in sync with autonom_hardware/config/hardware.yaml. -->
-  <xacro:property name="wheel_radius" value="0.0325"/>
+  <xacro:property name="wheel_radius" value="0.016"/>  <!-- measured 2026-11-27 (was 0.0325) -->
   <xacro:property name="wheel_separation" value="0.14"/>  <!-- measured 2026-11-26 -->
   <xacro:property name="wheel_width" value="0.026"/>
   <xacro:property name="chassis_length" value="0.19"/>

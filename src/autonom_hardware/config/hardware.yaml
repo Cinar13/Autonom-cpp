@@ -12,7 +12,7 @@
 /**:
   ros__parameters:
     gpio_chip: "pinctrl-rp1"
-    wheel_radius: 0.0325
+    wheel_radius: 0.016  # 30-33 mm wheels, measured 2026-11-27 (was 0.0325: odometry read 0.98 m for a 0.5 m push)
     wheel_separation: 0.14  # wheel centre to wheel centre, measured on the robot 2026-11-26 (was 0.17)
     left_joint_name: "left_wheel_joint"
     right_joint_name: "right_wheel_joint"
@@ -20,7 +20,7 @@
 motor_driver:
   ros__parameters:
     control_frequency_hz: 50.0
-    # Motor limit: N20 6 V, 300 rpm at the 1:50 gearbox output = 31.42 rad/s (1.02 m/s on the 0.0325 m wheels).
+    # Motor limit: N20 6 V, 300 rpm at the 1:50 gearbox output = 31.42 rad/s (0.50 m/s on the 0.016 m wheels).
     max_wheel_speed: 31.42
     stop_velocity_threshold: 0.05
     cmd_vel_timeout: 0.5
