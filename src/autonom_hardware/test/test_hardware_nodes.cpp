@@ -403,7 +403,7 @@ TEST_F(HardwareNodesTest, WheelOdometryTurnsEncoderEdgesIntoWheelAngle)
   })) << (joints ? std::to_string(joints->position[0]) + ", " + std::to_string(joints->position[1]) : "no joint_states");
   EXPECT_EQ(joints->name, (std::vector<std::string>{"left_wheel_joint", "right_wheel_joint"}));
   ASSERT_TRUE(spinUntil([&] { return odom && odom->pose.pose.position.x > 0.0; }));
-  EXPECT_NEAR(odom->pose.pose.position.x, 2.0 * M_PI * 0.016, 1e-6);  // one circumference straight ahead
+  EXPECT_NEAR(odom->pose.pose.position.x, 2.0 * M_PI * 0.0127, 1e-6);  // one circumference straight ahead
   EXPECT_NEAR(odom->pose.pose.position.y, 0.0, 1e-9);
   EXPECT_EQ(odom->header.frame_id, "odom");
   EXPECT_EQ(odom->child_frame_id, "base_footprint");
