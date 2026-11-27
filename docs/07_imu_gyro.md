@@ -32,7 +32,7 @@ the configured mode) the BNO055 calibrates its own gyro offset; the residual aft
 | Where | Value | Note |
 |---|---|---|
 | `imu.yaml` `variance_angular_vel` | 0.0004 (rad/s)² → σ 0.02 rad/s | Covariance reported to the EKF; deliberately larger than the datasheet noise (≈0.1 °/s ≈ 0.002 rad/s over ~50 Hz) to leave room for bias |
-| `ekf_imu.yaml` | gyro `vyaw` + `ax` fused, `imu0_angular_velocity_rejection_threshold` 5.0 | Absolute yaw (magnetometer) is not fused: unreliable near the motors |
+| `ekf_imu.yaml` | gyro `vyaw` fused (`ax` not: on the real robot it made the pose run away), `imu0_angular_velocity_rejection_threshold` 5.0 | Absolute yaw (magnetometer) is not fused: unreliable near the motors |
 | Sim (`gz_plugins.xacro` `gz_imu`) | white noise σ 2e-4 rad/s, **no bias**, 200 Hz (TB3) / 100 Hz (autonom) | Better than the real part: the sim doesn't test gyro bias or temperature drift |
 
 ## Before trusting it on the robot
