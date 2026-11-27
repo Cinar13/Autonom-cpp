@@ -75,7 +75,9 @@ wheel_odometry:
       inverted: false
       pull_up: true
     pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e+6, 1.0e+6, 1.0e+6, 1.0e-2]
-    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-2]
+    # Yaw-rate variance 0.2 (was 0.02): the wheels skid in turns (19 % short on a teleop lap, 2026-11-27), so the
+    # EKF takes its turn rate mainly from rf2o (0.01) and the gyro.
+    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-1]
 
 start_button:
   ros__parameters:

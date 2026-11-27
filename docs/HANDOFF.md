@@ -87,7 +87,7 @@ copied by hand; replaced files are kept as `*.~N~`. `git pull` (after discarding
 real: encoders -> wheel_odometry -> /wheel/odom                                                        |
 sim:  Gazebo /odom -> covariance relay -> /wheel/odom ---------------------------------------------- +--> EKF -> /odometry/filtered
                         [use_imu]  BNO08x or Gazebo IMU -> /imu/data ------------------------------------+    + TF odom->base_footprint
-EKF inputs: wheels vx + vy (= 0) + vyaw, rf2o vx only, IMU vyaw only (all velocities, no poses; IMU ax dropped 2026-11-27, it made the pose run away)
+EKF inputs: wheels vx + vy (= 0) + vyaw (variance 0.2), rf2o vx + vyaw (yaw re-added 2026-11-27), IMU vyaw only (all velocities, no poses; IMU ax dropped 2026-11-27, it made the pose run away)
 /scan -> slam_toolbox (maps, then localizes only once loop_patrol freezes the map) -> /map + TF map->odom -> Nav2 <- loop_patrol
 loop_patrol -> RPP desired_linear_vel + velocity_smoother max_accel (mapping profile, fast mode 10 s after the freeze)
 /scan -> scan_speckle_filter -> /scan_filtered -> Nav2 costmaps

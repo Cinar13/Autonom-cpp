@@ -1,12 +1,13 @@
-# Overlay for ekf.yaml, loaded only when use_rf2o:=true: rf2o laser odometry, forward velocity only.
-# rf2o's yaw rate is not fused (user decision): heading comes from the gyro and the wheels.
+# Overlay for ekf.yaml, loaded only when use_rf2o:=true: rf2o laser odometry, forward velocity and yaw rate.
+# Yaw rate fused again 2026-11-27 (user decision): on a teleop loop on the real robot rf2o turned -353 deg for a
+# -360 deg lap (0.09 m / 5 deg closing error), the wheels -293 deg (1.48 m / 67 deg), and the EKF followed the wheels.
 ekf_filter_node:
   ros__parameters:
     odom1: /rf2o/odom
     odom1_config: [false, false, false,
                    false, false, false,
                    true,  false, false,
-                   false, false, false,
+                   false, false, true,
                    false, false, false]
     odom1_queue_size: 10
     odom1_differential: false
