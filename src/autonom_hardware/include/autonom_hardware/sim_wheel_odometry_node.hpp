@@ -29,6 +29,8 @@ private:
   std::optional<DiffDriveKinematics> kinematics_;
   std::int64_t ticks_per_revolution_{0};
   double radians_per_tick_{0.0};
+  double left_wheel_scale_{1.0};
+  double right_wheel_scale_{1.0};
   std::string odom_frame_id_;
   std::string base_frame_id_;
   std::string left_joint_name_;

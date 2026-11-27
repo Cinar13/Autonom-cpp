@@ -17,7 +17,7 @@
 ## Measured geometry (on the robot, 2026-11-26)
 *   **Body:** 19 cm long, 17.5 cm wide. The wheel axle (`base_footprint`) is 6.5 cm from the back, so the body spans
     x = -0.065 .. +0.125 m and y = +-0.0875 m. Nav2 uses this rectangle as its footprint (plus 20 mm padding).
-*   **Wheels:** 65 mm diameter (r = 0.0325 m), **14 cm apart** centre to centre (`wheel_separation: 0.14`).
+*   **Wheels:** 30-33 mm diameter (physical r = 0.016 m; effective rolling radius 0.0127 m, calibrated 2026-11-27), **14 cm apart** centre to centre (`wheel_separation: 0.14`).
 *   **LiDAR:** centre 4.5 cm from the front, i.e. **8 cm ahead of the axle** (`laser_x: 0.08`), mounted turned 180 deg
     (`laser_yaw: pi`; checked on the robot: a forward push shows as +x in rf2o, and the corridor ahead appears ahead).
 *   **Wiring vs. the original schematic:** both TB6612 channels and both encoder pairs are crossed. Left wheel = channel B

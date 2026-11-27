@@ -14,7 +14,7 @@ namespace autonom_hardware
 SimWheelOdometryNode::SimWheelOdometryNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("wheel_odometry", options), last_stamp_(0, 0, get_clock()->get_clock_type())
 {
-  const auto wheel_radius = declareParameter<double>(*this, "wheel_radius", 0.0325, "Wheel radius [m]");
+  const auto wheel_radius = declareParameter<double>(*this, "wheel_radius", 0.0127, "Effective wheel radius [m]");
   const auto wheel_separation =
     declareParameter<double>(*this, "wheel_separation", 0.17, "Distance between wheel contact points [m]");
   ticks_per_revolution_ = declareParameter<std::int64_t>(
@@ -26,9 +26,16 @@ SimWheelOdometryNode::SimWheelOdometryNode(const rclcpp::NodeOptions & options)
   right_joint_name_ =
     declareParameter<std::string>(*this, "right_joint_name", "right_wheel_joint", "Right wheel joint name");
   pose_covariance_ = declareCovarianceDiagonal(*this, "pose_covariance_diagonal", {1e-3, 1e-3, 1e6, 1e6, 1e6, 1e-2});
-  twist_covariance_ = declareCovarianceDiagonal(*this, "twist_covariance_diagonal", {2e-3, 1e-4, 1e6, 1e6, 1e6, 2e-2});
+  twist_covariance_ = declareCovarianceDiagonal(*this, "twist_covariance_diagonal", {2e-3, 1e-4, 1e6, 1e6, 1e6, 2e-1});
+  // Per-wheel odometry scale, to reproduce the real robot's uneven wheel slip in simulation (1.0 = ideal encoders).
+  left_wheel_scale_ = declareParameter<double>(*this, "left_wheel_scale", 1.0, "Scale on the left wheel's measured travel");
+  right_wheel_scale_ =
+    declareParameter<double>(*this, "right_wheel_scale", 1.0, "Scale on the right wheel's measured travel");
   if (ticks_per_revolution_ <= 0) {
     throw std::invalid_argument("ticks_per_revolution must be positive");
+  }
+  if (!(left_wheel_scale_ > 0.0) || !(right_wheel_scale_ > 0.0)) {
+    throw std::invalid_argument("left_wheel_scale and right_wheel_scale must be positive");
   }
   kinematics_.emplace(wheel_radius, wheel_separation);
   radians_per_tick_ = 2.0 * M_PI / static_cast<double>(ticks_per_revolution_);
@@ -70,8 +77,8 @@ void SimWheelOdometryNode::onJointStates(const sensor_msgs::msg::JointState & ms
     return;
   }
   const WheelPair wheel_delta{
-    static_cast<double>(left_ticks - last_left_ticks_) * radians_per_tick_,
-    static_cast<double>(right_ticks - last_right_ticks_) * radians_per_tick_};
+    static_cast<double>(left_ticks - last_left_ticks_) * radians_per_tick_ * left_wheel_scale_,
+    static_cast<double>(right_ticks - last_right_ticks_) * radians_per_tick_ * right_wheel_scale_};
   last_left_ticks_ = left_ticks;
   last_right_ticks_ = right_ticks;
   last_stamp_ = stamp;

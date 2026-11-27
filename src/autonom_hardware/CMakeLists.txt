@@ -138,6 +138,7 @@ if(BUILD_TESTING)
     test/test_hardware_nodes.cpp
     src/motor_driver_node.cpp
     src/wheel_odometry_node.cpp
+    src/sim_wheel_odometry_node.cpp
     src/start_button_node.cpp
     TIMEOUT 120
   )

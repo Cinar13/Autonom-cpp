@@ -89,6 +89,8 @@ def generate_launch_description():
             description='Send the race start signal on launch (false: call /race/start yourself)'),
         DeclareLaunchArgument('wheel_radius', default_value='0.033', description='Sim robot wheel radius [m]'),
         DeclareLaunchArgument('wheel_separation', default_value='0.160', description='Sim robot wheel separation [m]'),
+        DeclareLaunchArgument('right_wheel_scale', default_value='1.0',
+                              description='Scale on the right wheel\'s odometry travel (1.0 = ideal; models uneven wheel slip)'),
         DeclareLaunchArgument('left_wheel_joint', default_value='wheel_left_joint', description='Left wheel joint'),
         DeclareLaunchArgument('right_wheel_joint', default_value='wheel_right_joint', description='Right wheel joint'),
         DeclareLaunchArgument('x', default_value='0.0', description='Spawn x [m]'),
@@ -145,6 +147,7 @@ def generate_launch_description():
             {
                 'wheel_radius': ParameterValue(LaunchConfiguration('wheel_radius'), value_type=float),
                 'wheel_separation': ParameterValue(LaunchConfiguration('wheel_separation'), value_type=float),
+                'right_wheel_scale': ParameterValue(LaunchConfiguration('right_wheel_scale'), value_type=float),
                 'left_joint_name': LaunchConfiguration('left_wheel_joint'),
                 'right_joint_name': LaunchConfiguration('right_wheel_joint'),
             },

@@ -6,7 +6,7 @@ robot:=tb3_fast  the TurtleBot3 body at the real robot's 0.6 m/s (urdf/turtlebot
                  config/nav2_fibonacci_fast.yaml)
 
 Driving overrides (empty keeps the configured values):
-  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 1.02, its
+  mapping_speed:= race_speed:=   cruise speed of the mapping lap / race laps, 0.1-1.5 m/s (autonom: up to 0.40, its
                                  motors' limit; the stack is tuned for 0.3 / 0.6)
   mapping_accel:= race_accel:=   linear acceleration limit, 0.1-3.0 m/s^2 (configured 0.5 / 1.5)
   turn_speed:=                   turn speed limit, 0.5-5.0 rad/s (configured 3.0; tb3 2.0)
@@ -23,7 +23,7 @@ stack:=world   the simulated world and RViz only (scripts/start_sim.sh); the Gaz
 stack:=robot   the robot code only (scripts/start_robot.sh --sim), against a running stack:=world of the same robot:=;
                the driving overrides, controller:= and planner:= apply here
 
-The EKF fuses the IMU (gyro + accelerometer) and rf2o's forward speed by default (use_imu, use_rf2o): at
+The EKF fuses the IMU gyro and rf2o's forward speed and yaw rate by default (use_imu, use_rf2o): at
 0.6 m/s the TurtleBot3's wheels slip and wheel-only odometry drifted up to 0.35 m / 1 rad; fused it stayed within 0.17 m over 3 minutes.
 
 The robot spawns in the middle of the bottom corridor facing +x; laps run in the direction it faces at the
@@ -43,11 +43,11 @@ from launch.substitutions import LaunchConfiguration
 
 ROBOTS = ('tb3', 'tb3_fast', 'autonom')
 # Per robot: the configured Nav2 velocity_smoother limits, the Gazebo DiffDrive limits of its model, and the highest
-# cruise speed a user may ask for (the real robot's motors stop at 300 rpm = 1.02 m/s).
+# cruise speed a user may ask for (the real robot's motors stop at 300 rpm = 0.40 m/s on its 0.0127 m effective wheel radius).
 LIMITS = {
     'tb3': {'nav_speed': 0.22, 'nav_turn': 2.0, 'gz_speed': 0.22, 'gz_turn': 2.84, 'max_speed': 1.5},
     'tb3_fast': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 0.65, 'gz_turn': 4.0, 'max_speed': 1.5},
-    'autonom': {'nav_speed': 0.6, 'nav_turn': 3.0, 'gz_speed': 1.02, 'gz_turn': 3.0, 'max_speed': 1.02},
+    'autonom': {'nav_speed': 0.35, 'nav_turn': 3.0, 'gz_speed': 0.45, 'gz_turn': 3.0, 'max_speed': 0.40},
 }
 MIN_SPEED = 0.1
 ACCEL_RANGE = (0.1, 3.0)  # m/s^2
@@ -124,7 +124,7 @@ def _open_gz_limits(robot):
     limits = LIMITS[robot]
     xacro = {'gz_max_angular_velocity': max(limits['gz_turn'], TURN_RANGE[1]),
              'gz_max_acceleration': ACCEL_RANGE[1]}
-    if robot != 'autonom':  # the real robot's model already stops at its motors' 1.02 m/s
+    if robot != 'autonom':  # the real robot's model already stops at its motors' 0.40 m/s (gz cap 0.45)
         xacro['gz_max_velocity'] = round(limits['max_speed'] + 0.05, 3)
     return ' '.join(f'{k}:={v}' for k, v in xacro.items())
 
@@ -139,7 +139,7 @@ def _simulation(context):
         urdf = os.path.join(get_package_share_directory('autonom_description'), 'urdf', 'autonom.urdf.xacro')
         overlay = ''  # the base configuration is tuned for this robot
         # Keep in sync with autonom.urdf.xacro and autonom_hardware hardware.yaml.
-        wheels = {'wheel_radius': '0.0325', 'wheel_separation': '0.17',
+        wheels = {'wheel_radius': '0.016', 'wheel_separation': '0.14',  # physical radius: Gazebo wheels do not slip
                   'left_wheel_joint': 'left_wheel_joint', 'right_wheel_joint': 'right_wheel_joint'}
     elif robot == 'tb3_fast':
         urdf = os.path.join(sim_share, 'urdf', 'turtlebot3_burger_fast.urdf.xacro')
@@ -161,6 +161,15 @@ def _simulation(context):
         raise ValueError(f"planner must be navfn, smac or thetastar, got '{planner}'")
     if planner != 'navfn':  # shared with the robot (bringup.launch.py planner:=)
         overlay = ','.join(p for p in (overlay, os.path.join(bringup_config, f'nav2_{planner}.yaml')) if p)
+    use_imu = LaunchConfiguration('use_imu')
+    if LaunchConfiguration('real_noise').perform(context).lower() in ('true', '1', 'yes'):
+        # Sensor faults measured on the real robot (2026-11-27, teleop lap back to the start marks): wheel odometry
+        # turned 19 % short (net) and drifted 67 deg / 1.48 m over a 12 m lap; the IMU was dead for the whole run.
+        # Odometry wheel separation 0.146 (true 0.14) = turns read ~4 % short; right wheel 1.2 % short = heading drift.
+        if not wheels:
+            raise ValueError('real_noise:=true needs robot:=autonom')
+        wheels = {**wheels, 'wheel_separation': '0.146', 'right_wheel_scale': '0.988'}
+        use_imu = 'false'
     stack = LaunchConfiguration('stack').perform(context)
     if stack not in STACKS:
         raise ValueError(f"stack must be one of {STACKS}, got '{stack}'")
@@ -178,7 +187,7 @@ def _simulation(context):
         'x': LaunchConfiguration('x'),
         'y': LaunchConfiguration('y'),
         'yaw': LaunchConfiguration('yaw'),
-        'use_imu': LaunchConfiguration('use_imu'),
+        'use_imu': use_imu,
         'use_rf2o': LaunchConfiguration('use_rf2o'),
         'use_world': str(stack != 'robot').lower(),
         'use_autonomy': str(stack != 'world').lower(),
@@ -211,7 +220,10 @@ def generate_launch_description():
         DeclareLaunchArgument('race_accel', default_value='', description='Race-lap acceleration, m/s^2'),
         DeclareLaunchArgument('turn_speed', default_value='', description='Turn speed limit, rad/s'),
         DeclareLaunchArgument('use_imu', default_value='true',
-                              description='Fuse the simulated IMU (gyro yaw rate + forward acceleration) in the EKF'),
+                              description='Fuse the simulated IMU (gyro yaw rate) in the EKF'),
         DeclareLaunchArgument('use_rf2o', default_value='true', description='Fuse rf2o laser odometry in the EKF'),
+        DeclareLaunchArgument(
+            'real_noise', default_value='false',
+            description='robot:=autonom only: reproduce the real robot\'s 2026-11-27 sensor faults (uneven wheel slip, IMU off)'),
         OpaqueFunction(function=_simulation),
     ])

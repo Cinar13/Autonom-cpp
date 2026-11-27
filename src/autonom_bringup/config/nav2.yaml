@@ -55,7 +55,7 @@ controller_server:
       yaw_goal_tolerance: 0.5
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.6
+      desired_linear_vel: 0.35  # motors top out at 0.40 m/s (2026-11-27)
       # Lookahead grows with speed (0.6 s) but stays short for 0.6 m corridors and hairpins.
       lookahead_dist: 0.4
       # Must stay above general_goal_checker.xy_goal_tolerance (0.2): RPP compares the *carrot* distance with
@@ -242,7 +242,7 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.6, 0.0, 3.0]
+    max_velocity: [0.35, 0.0, 3.0]
     min_velocity: [-0.15, 0.0, -3.0]
     max_accel: [1.5, 0.0, 5.0]
     max_decel: [-2.0, 0.0, -5.0]

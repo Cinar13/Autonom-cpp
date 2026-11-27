@@ -1,4 +1,4 @@
-# Overlay for ekf.yaml, loaded only when use_imu:=true. A 6-axis IMU (gyro + accelerometer) is enough.
+# Overlay for ekf.yaml, loaded only when use_imu:=true. Only the gyro is used; the accelerometer is not fused.
 # Fused: gyro yaw rate only. Forward speed comes from the wheels and rf2o. Forward acceleration ax is left out: on the
 # real BNO08x its bias, mounting tilt, wall-contact spikes and dropouts were integrated into speed, and the EKF pose ran
 # ~5 m away while the robot stood still (2026-11-27), so every Nav2 goal "succeeded" without moving. Absolute yaw is
@@ -14,5 +14,4 @@ ekf_filter_node:
     imu0_queue_size: 20
     imu0_differential: false
     imu0_relative: false
-    imu0_remove_gravitational_acceleration: true
     imu0_angular_velocity_rejection_threshold: 5.0

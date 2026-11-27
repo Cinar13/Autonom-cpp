@@ -8,4 +8,5 @@ rf2o_covariance_relay:
 wheel_odom_covariance_relay:
   ros__parameters:
     pose_covariance_diagonal: [1.0e-3, 1.0e-3, 1.0e+6, 1.0e+6, 1.0e+6, 1.0e-2]
-    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-2]
+    # Yaw-rate variance matches the real robot's wheel_odometry (autonom_hardware/config/hardware.yaml).
+    twist_covariance_diagonal: [2.0e-3, 1.0e-4, 1.0e+6, 1.0e+6, 1.0e+6, 2.0e-1]

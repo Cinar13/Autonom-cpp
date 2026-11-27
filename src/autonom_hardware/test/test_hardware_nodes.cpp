@@ -19,6 +19,7 @@
 #include <std_msgs/msg/empty.hpp>
 
 #include "autonom_hardware/motor_driver_node.hpp"
+#include "autonom_hardware/sim_wheel_odometry_node.hpp"
 #include "autonom_hardware/start_button_node.hpp"
 #include "autonom_hardware/wheel_odometry_node.hpp"
 #include "fake_gpiod.hpp"
@@ -407,6 +408,38 @@ TEST_F(HardwareNodesTest, WheelOdometryTurnsEncoderEdgesIntoWheelAngle)
   EXPECT_NEAR(odom->pose.pose.position.y, 0.0, 1e-9);
   EXPECT_EQ(odom->header.frame_id, "odom");
   EXPECT_EQ(odom->child_frame_id, "base_footprint");
+}
+
+TEST_F(HardwareNodesTest, SimWheelOdometryAppliesPerWheelScale)
+{
+  std::optional<nav_msgs::msg::Odometry> odom;
+  auto odom_sub = helper_->create_subscription<nav_msgs::msg::Odometry>(
+    "wheel/odom", 10, [&](const nav_msgs::msg::Odometry & msg) { odom = msg; });
+  auto node_options = options();
+  node_options.parameter_overrides({{"right_wheel_scale", 0.9}});
+  auto odometry = std::make_shared<autonom_hardware::SimWheelOdometryNode>(node_options);
+  executor_->add_node(odometry);
+  auto joints = helper_->create_publisher<sensor_msgs::msg::JointState>("joint_states", rclcpp::SensorDataQoS());
+
+  // Both joints turn one revolution; the right wheel is reported 10 % short, as if it slipped.
+  auto publish = [&](int sec, double angle) {
+    sensor_msgs::msg::JointState msg;
+    msg.header.stamp.sec = sec;
+    msg.name = {"left_wheel_joint", "right_wheel_joint"};
+    msg.position = {angle, angle};
+    joints->publish(msg);
+  };
+  ASSERT_TRUE(spinUntil([&] { return joints->get_subscription_count() > 0 && odom_sub->get_publisher_count() > 0; }));
+  publish(1, 0.0);
+  spinFor(50ms);
+  publish(2, 2.0 * M_PI);
+  ASSERT_TRUE(spinUntil([&] { return odom.has_value(); }));
+  const double r = odometry->get_parameter("wheel_radius").as_double();
+  const double b = odometry->get_parameter("wheel_separation").as_double();
+  const double left = 2.0 * M_PI * r;
+  const double right = 0.9 * left;
+  EXPECT_NEAR(odom->twist.twist.linear.x, 0.5 * (left + right), 1e-3);
+  EXPECT_NEAR(odom->twist.twist.angular.z, (right - left) / b, 1e-3);  // drifts right although both joints turned alike
 }
 
 TEST_F(HardwareNodesTest, MissingGpioChipFailsLoudly)

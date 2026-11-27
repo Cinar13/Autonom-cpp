@@ -34,7 +34,7 @@ WheelOdometryNode::WheelOdometryNode(const rclcpp::NodeOptions & options)
 {
   const auto gpio_chip =
     declareParameter<std::string>(*this, "gpio_chip", "pinctrl-rp1", "GPIO chip name, label, path or number");
-  const auto wheel_radius = declareParameter<double>(*this, "wheel_radius", 0.0325, "Wheel radius [m]");
+  const auto wheel_radius = declareParameter<double>(*this, "wheel_radius", 0.0127, "Effective wheel radius [m]");
   const auto wheel_separation =
     declareParameter<double>(*this, "wheel_separation", 0.17, "Distance between wheel contact points [m]");
   const auto ticks_per_revolution = declareParameter<std::int64_t>(
